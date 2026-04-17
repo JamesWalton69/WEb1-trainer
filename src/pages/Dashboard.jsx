@@ -30,8 +30,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   // AI Modal State
+  const masterKey = import.meta.env.VITE_GEMINI_API_KEY;
   const [showAIModal, setShowAIModal] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
+  const [useMasterKey, setUseMasterKey] = useState(!!masterKey);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
 
@@ -77,17 +79,21 @@ export default function Dashboard() {
   };
 
   const handleGenerateAIWorkout = async () => {
-      if (!apiKey) {
-          alert("Please enter a valid Gemini API Key first.");
+      const activeKey = useMasterKey ? masterKey : apiKey;
+      
+      if (!activeKey) {
+          alert("Please enter a valid Gemini API Key first or check environment configuration.");
           return;
       }
       if (!aiPrompt) return;
       
-      localStorage.setItem('geminiApiKey', apiKey);
+      if (!useMasterKey) {
+          localStorage.setItem('geminiApiKey', apiKey);
+      }
       setAiGenerating(true);
       
       try {
-          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${activeKey}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -401,17 +407,39 @@ export default function Dashboard() {
                       Describe your perfect workout, and our AI will generate a structured custom routine for you instantly.
                   </p>
                   
-                  <div className="form-group" style={{ marginBottom: '1rem' }}>
-                      <label>Google Gemini API Key</label>
-                      <input 
-                          type="password" 
-                          className="input-field" 
-                          placeholder="AIzaSy..." 
-                          value={apiKey} 
-                          onChange={(e) => setApiKey(e.target.value)} 
-                      />
-                      <small style={{ color: 'var(--text-muted)' }}>Get a free key from Google AI Studio. Stored locally.</small>
-                  </div>
+                  {useMasterKey ? (
+                      <div style={{ padding: '0.75rem', background: 'rgba(0, 212, 170, 0.1)', border: '1px solid rgba(0, 212, 170, 0.2)', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ color: 'var(--primary-light)', fontSize: '0.85rem', fontWeight: 600 }}>💎 Powered by FitTrainer Pro AI</span>
+                          <button 
+                              onClick={() => setUseMasterKey(false)} 
+                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                              Use my own key
+                          </button>
+                      </div>
+                  ) : (
+                      <div className="form-group" style={{ marginBottom: '1rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <label>Google Gemini API Key</label>
+                              {masterKey && (
+                                  <button 
+                                      onClick={() => setUseMasterKey(true)} 
+                                      style={{ background: 'transparent', border: 'none', color: 'var(--primary-light)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                  >
+                                      Use FitTrainer Pro AI
+                                  </button>
+                              )}
+                          </div>
+                          <input 
+                              type="password" 
+                              className="input-field" 
+                              placeholder="AIzaSy..." 
+                              value={apiKey} 
+                              onChange={(e) => setApiKey(e.target.value)} 
+                          />
+                          <small style={{ color: 'var(--text-muted)' }}>Get a free key from Google AI Studio. Stored locally.</small>
+                      </div>
+                  )}
 
                   <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                       <label>Workout Prompt</label>
@@ -432,6 +460,10 @@ export default function Dashboard() {
                   >
                       {aiGenerating ? 'Generating magic...' : 'Generate New Routine'}
                   </button>
+                  
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', marginTop: '1rem', lineHeight: 1.4 }}>
+                      ⚠️ <strong>Please use the AI Coach responsibly.</strong> Excessive requests may lead to temporary rate-limiting for all users.
+                  </p>
               </div>
           </div>
       )}
