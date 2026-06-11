@@ -13,6 +13,7 @@ import {
   buildChartData, buildStreakCalendar, getCustomWorkouts, deleteCustomWorkout, saveCustomWorkout
 } from '../lib/firestoreService';
 import { auth } from '../lib/firebase';
+import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay } from '../lib/weeklyPlan';
 import { signOut } from 'firebase/auth';
 
 export default function Dashboard() {
@@ -32,10 +33,13 @@ export default function Dashboard() {
   // AI Modal State
   const masterKey = import.meta.env.VITE_GEMINI_API_KEY;
   const [showAIModal, setShowAIModal] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('geminiApiKey') || '');
   const [useMasterKey, setUseMasterKey] = useState(!!masterKey);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
+  const weekdayIds = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const todayPlan = resolveWeeklyPlanDay(weekdayIds[new Date().getDay()]);
 
   useEffect(() => {
     async function loadData() {
@@ -124,6 +128,17 @@ export default function Dashboard() {
       } finally {
           setAiGenerating(false);
       }
+  };
+
+  const handleStartPlanDay = (dayPlan) => {
+      if (dayPlan.isRestDay) return;
+      navigate('/workout', {
+          state: {
+              routine: dayPlan.executableRoutine,
+              routineName: `${weeklyCalisthenicsPlan.title} · ${dayPlan.label} · ${dayPlan.focus}`,
+              routineSettings: dayPlan.routineSettings,
+          }
+      });
   };
 
   const firstName = userName.split(' ')[0];
@@ -274,16 +289,35 @@ export default function Dashboard() {
               {/* Default Quick Start */}
               <div 
                   className="glass-solid" 
-                  style={{ display: 'flex', flexDirection: 'column', gap: '1rem', cursor: 'pointer', border: '1px solid rgba(0, 212, 170, 0.3)' }}
-                  onClick={() => navigate('/workout', { state: { routineSettings: { sets: 3, restBetweenSet: 60, restBetweenEx: 35, prepTime: 10 } } })}
+                  style={{ display: 'flex', flexDirection: 'column', gap: '1rem', border: '1px solid rgba(0, 212, 170, 0.3)' }}
               >
                   <div>
-                      <h4 style={{ color: 'var(--accent)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>Standard Full Body</h4>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>5 exercises · 3 sets · Default pacing</p>
+                      <h4 style={{ color: 'var(--accent)', fontSize: '1.1rem', marginBottom: '0.25rem' }}>
+                        {weeklyCalisthenicsPlan.emoji} {weeklyCalisthenicsPlan.title}
+                      </h4>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
+                        {weeklyCalisthenicsPlan.equipment} · {weeklyCalisthenicsPlan.workoutTime}
+                      </p>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        Today: <strong>{todayPlan.label}</strong> · {todayPlan.focus}
+                      </p>
+                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '0.35rem' }}>
+                        {weeklyCalisthenicsPlan.goal}
+                      </p>
                   </div>
-                  <button className="btn btn-accent" style={{ width: '100%' }}>
-                      <Play size={18} /> Start
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowPlanModal(true)}>
+                      View Plan
+                    </button>
+                    <button
+                      className="btn btn-accent"
+                      style={{ flex: 1 }}
+                      onClick={() => handleStartPlanDay(todayPlan)}
+                      disabled={todayPlan.isRestDay}
+                    >
+                      <Play size={18} /> {todayPlan.isRestDay ? 'Rest Day' : 'Start Today'}
+                    </button>
+                  </div>
               </div>
 
               {/* Custom Routines */}
@@ -464,6 +498,103 @@ export default function Dashboard() {
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', marginTop: '1rem', lineHeight: 1.4 }}>
                       ⚠️ <strong>Please use the AI Coach responsibly.</strong> Excessive requests may lead to temporary rate-limiting for all users.
                   </p>
+              </div>
+          </div>
+      )}
+
+      {showPlanModal && (
+          <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)',
+              zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+          }}>
+              <div className="glass animate-scale-in" style={{ width: '100%', maxWidth: '760px', maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
+                  <button className="btn-icon" style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent' }} onClick={() => setShowPlanModal(false)}>
+                      <X size={24} />
+                  </button>
+
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>
+                    {weeklyCalisthenicsPlan.emoji} {weeklyCalisthenicsPlan.title}
+                  </h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginBottom: '0.5rem' }}>
+                    {weeklyCalisthenicsPlan.equipment} · {weeklyCalisthenicsPlan.workoutTime}
+                  </p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1rem' }}>
+                    {weeklyCalisthenicsPlan.goal}
+                  </p>
+
+                  <div style={{ marginBottom: '1.25rem', padding: '0.85rem 1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.04)' }}>
+                    <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Rest between sets</p>
+                    {weeklyCalisthenicsPlan.restGuidelines.map((item) => (
+                      <p key={item} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '0.85rem' }}>
+                    {weeklyCalisthenicsPlan.days.map((day) => {
+                      const resolvedDay = resolveWeeklyPlanDay(day.id);
+                      return (
+                        <div key={day.id} className="glass-solid" style={{ padding: '1rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.6rem' }}>
+                            <div>
+                              <h3 style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{day.label} — {day.focus}</h3>
+                              {day.repeatLabel && (
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{day.repeatLabel}</p>
+                              )}
+                            </div>
+                            {!resolvedDay.isRestDay && (
+                              <button className="btn btn-ghost" onClick={() => handleStartPlanDay(resolvedDay)}>
+                                <Play size={16} /> Start
+                              </button>
+                            )}
+                          </div>
+
+                          {resolvedDay.warmup?.length > 0 && (
+                            <div style={{ marginBottom: '0.65rem' }}>
+                              <p style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.35rem' }}>Warm-up (5 min)</p>
+                              {resolvedDay.warmup.map((item) => (
+                                <p key={item} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{item}</p>
+                              ))}
+                            </div>
+                          )}
+
+                          {resolvedDay.workout?.length > 0 && (
+                            <div style={{ marginBottom: resolvedDay.core?.length > 0 ? '0.65rem' : 0 }}>
+                              <p style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.35rem' }}>Workout</p>
+                              {resolvedDay.workout.map((item) => (
+                                <p key={item} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{item}</p>
+                              ))}
+                            </div>
+                          )}
+
+                          {resolvedDay.core?.length > 0 && (
+                            <div>
+                              <p style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.35rem' }}>Core</p>
+                              {resolvedDay.core.map((item) => (
+                                <p key={item} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{item}</p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: '1.25rem' }}>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.6rem' }}>📈 Progression Rules</h3>
+                    <div style={{ display: 'grid', gap: '0.6rem' }}>
+                      {weeklyCalisthenicsPlan.progressionRules.map((rule) => (
+                        <div key={rule.exercise} className="glass-solid" style={{ padding: '0.9rem' }}>
+                          <p style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: '0.25rem' }}>{rule.exercise}</p>
+                          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{rule.when}</p>
+                          {rule.moveTo && (
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: '0.25rem' }}>{rule.moveTo}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
               </div>
           </div>
       )}

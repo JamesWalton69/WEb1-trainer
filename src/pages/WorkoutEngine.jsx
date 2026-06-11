@@ -2,16 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Pause, Play, Square, Volume2, VolumeX, Camera, CameraOff, Mic, MicOff, Music } from 'lucide-react';
 import { getRandomQuote } from '../lib/quotes';
+import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay } from '../lib/weeklyPlan';
 import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 
-const defaultWorkout = [
-  {"name": "Incline Pushups", "reps": 10, "tension": 2, "reset": 0.4, "gif": "/exercises/incline-pushups.png"},
-  {"name": "Jump Squats", "reps": 17, "tension": 2, "reset": 0.4, "gif": "/exercises/jump-squats.png"},
-  {"name": "Glute Bridges", "reps": 15, "tension": 3, "reset": 0.4, "gif": "/exercises/glute-bridges.png"},
-  {"name": "Superman", "reps": 11, "tension": 3.5, "reset": 0.6, "gif": "/exercises/superman.png"},
-  {"name": "Plank", "reps": 1, "tension": 45, "reset": 10, "gif": "/exercises/plank.png"}
-];
+const defaultPlanDay = resolveWeeklyPlanDay('monday');
+const defaultWorkout = defaultPlanDay.executableRoutine;
 
 const PHASE_COLORS = {
   'GET READY': '#334155',
@@ -38,12 +34,10 @@ export default function WorkoutEngine() {
   const location = useLocation();
   
   const activeWorkout = location.state?.routine || defaultWorkout;
-  const workoutName = location.state?.routineName || "Standard Workout";
+  const workoutName = location.state?.routineName || `${weeklyCalisthenicsPlan.title} · ${defaultPlanDay.label} · ${defaultPlanDay.focus}`;
   
   // Apply Global Settings
-  const TIMING = location.state?.routineSettings || {
-    sets: 3, restBetweenEx: 35, restBetweenSet: 60, prepTime: 10
-  };
+  const TIMING = location.state?.routineSettings || defaultPlanDay.routineSettings;
 
   const [phase, setPhase] = useState("GET READY");
   const [subInfo, setSubInfo] = useState("");
