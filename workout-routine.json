@@ -1,0 +1,262 @@
+{
+  "title": "Weekly Workout Routine",
+  "overview": {
+    "goal": "40-45 minutes on workout days including rest",
+    "equipment": [
+      "Chair",
+      "Backpack"
+    ],
+    "notes": [
+      "No pull-up bar required",
+      "Backpack rows replace pull-ups for back training",
+      "Diamond push-ups are included on Day 4",
+      "Rest 45-75 seconds between sets unless otherwise noted"
+    ]
+  },
+  "days": [
+    {
+      "day": 1,
+      "name": "Upper Body A",
+      "durationMinutes": "40-45",
+      "warmUpMinutes": 5,
+      "coolDownMinutes": 5,
+      "restBetweenSetsSeconds": "45-75",
+      "exercises": [
+        {
+          "name": "Push-ups",
+          "sets": 4,
+          "reps": "12-15"
+        },
+        {
+          "name": "Backpack rows",
+          "sets": 4,
+          "reps": "12-15"
+        },
+        {
+          "name": "Pike push-ups",
+          "sets": 3,
+          "reps": "10-12"
+        },
+        {
+          "name": "Chair dips",
+          "sets": 3,
+          "reps": "12"
+        },
+        {
+          "name": "Shoulder taps",
+          "sets": 3,
+          "reps": "20"
+        },
+        {
+          "name": "Plank",
+          "sets": 3,
+          "reps": "40-60 sec"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "name": "Lower Body A",
+      "durationMinutes": "40-45",
+      "warmUpMinutes": 5,
+      "coolDownMinutes": 5,
+      "restBetweenSetsSeconds": "45-75",
+      "exercises": [
+        {
+          "name": "Bodyweight squats",
+          "sets": 4,
+          "reps": "15-20"
+        },
+        {
+          "name": "Reverse lunges",
+          "sets": 4,
+          "reps": "10 each leg"
+        },
+        {
+          "name": "Glute bridges",
+          "sets": 4,
+          "reps": "15"
+        },
+        {
+          "name": "Calf raises",
+          "sets": 4,
+          "reps": "20"
+        },
+        {
+          "name": "Wall sit",
+          "sets": 3,
+          "reps": "45-60 sec"
+        },
+        {
+          "name": "Mountain climbers",
+          "sets": 3,
+          "reps": "20"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "name": "Active Recovery",
+      "durationMinutes": "40",
+      "intensity": "light",
+      "activities": [
+        {
+          "name": "Light walk",
+          "durationMinutes": 20
+        },
+        {
+          "name": "Mobility and stretching",
+          "durationMinutes": 15
+        },
+        {
+          "name": "Bird dogs",
+          "sets": 3,
+          "reps": "12 each side"
+        },
+        {
+          "name": "Dead bugs",
+          "sets": 3,
+          "reps": "12 each side"
+        }
+      ],
+      "note": "Keep this day light, not intense"
+    },
+    {
+      "day": 4,
+      "name": "Upper Body B",
+      "durationMinutes": "40-45",
+      "warmUpMinutes": 5,
+      "coolDownMinutes": 5,
+      "restBetweenSetsSeconds": "45-75",
+      "exercises": [
+        {
+          "name": "Incline push-ups",
+          "sets": 4,
+          "reps": "12-15"
+        },
+        {
+          "name": "Diamond push-ups",
+          "sets": 3,
+          "reps": "8-10"
+        },
+        {
+          "name": "Backpack rows",
+          "sets": 4,
+          "reps": "12-15"
+        },
+        {
+          "name": "Chair dips",
+          "sets": 3,
+          "reps": "10-12"
+        },
+        {
+          "name": "Side plank",
+          "sets": 3,
+          "reps": "30-40 sec each side"
+        },
+        {
+          "name": "Arm circles or shoulder mobility",
+          "durationMinutes": 3
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "name": "Lower Body B + Core",
+      "durationMinutes": "40-45",
+      "warmUpMinutes": 5,
+      "coolDownMinutes": 5,
+      "restBetweenSetsSeconds": "45-75",
+      "exercises": [
+        {
+          "name": "Jump squats",
+          "sets": 3,
+          "reps": "12"
+        },
+        {
+          "name": "Bulgarian split squats",
+          "sets": 4,
+          "reps": "8 each leg"
+        },
+        {
+          "name": "Glute bridges",
+          "sets": 4,
+          "reps": "15"
+        },
+        {
+          "name": "Calf raises",
+          "sets": 4,
+          "reps": "20"
+        },
+        {
+          "name": "Leg raises",
+          "sets": 3,
+          "reps": "12-15"
+        },
+        {
+          "name": "Plank",
+          "sets": 3,
+          "reps": "45-60 sec"
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "name": "Full Body",
+      "durationMinutes": "40-45",
+      "warmUpMinutes": 5,
+      "coolDownMinutes": 5,
+      "restBetweenSetsSeconds": "45-75",
+      "exercises": [
+        {
+          "name": "Push-ups",
+          "sets": 3,
+          "reps": "12-15"
+        },
+        {
+          "name": "Backpack rows",
+          "sets": 3,
+          "reps": "12-15"
+        },
+        {
+          "name": "Squats",
+          "sets": 3,
+          "reps": "15"
+        },
+        {
+          "name": "Lunges",
+          "sets": 3,
+          "reps": "10 each leg"
+        },
+        {
+          "name": "Pike push-ups",
+          "sets": 3,
+          "reps": "10"
+        },
+        {
+          "name": "Mountain climbers",
+          "sets": 3,
+          "reps": "20"
+        },
+        {
+          "name": "Plank",
+          "sets": 3,
+          "reps": "45 sec"
+        }
+      ]
+    },
+    {
+      "day": 7,
+      "name": "Rest",
+      "activities": [
+        {
+          "name": "Full rest"
+        },
+        {
+          "name": "Optional easy walk",
+          "durationMinutes": "15-20"
+        }
+      ]
+    }
+  ]
+}
