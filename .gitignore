@@ -1,0 +1,36 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# Env files — never commit keys. VITE_* vars are inlined into the public bundle.
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs / scratch output
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+build_error.txt
+lint_output.txt
+
+# Legacy cloud tooling (no longer used; see DECOMMISSION-CLOUD.md)
+.vercel
+.firebase
+firebase-debug.log
