@@ -1,0 +1,39 @@
+# fittrainer-backup.service — one snapshot, then exit. Driven by the .timer.
+#
+#   sudo cp deploy/fittrainer-backup.service deploy/fittrainer-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fittrainer-backup.timer
+#   systemctl list-timers fittrainer-backup.timer     # when does it next run
+#   sudo systemctl start fittrainer-backup.service    # run one right now
+#   journalctl -u fittrainer-backup -n 20             # did it work
+
+[Unit]
+Description=Snapshot the FitTrainer database
+Documentation=file:///srv/fittrainer/DEPLOY.md
+
+[Service]
+Type=oneshot
+User=fittrainer
+Group=fittrainer
+WorkingDirectory=/srv/fittrainer
+
+StateDirectory=fittrainer
+Environment=FITTRAINER_DB=/var/lib/fittrainer/fittrainer.sqlite
+Environment=FITTRAINER_BACKUP_DIR=/var/lib/fittrainer/backups
+# Two weeks of daily snapshots. Raise it if you have the disk.
+Environment=FITTRAINER_KEEP=14
+# Same reason as fittrainer-api.service: hide only the node:sqlite
+# ExperimentalWarning so a successful backup logs nothing but its summary.
+Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
+
+ExecStart=/usr/bin/node /srv/fittrainer/server/backup.mjs
+
+SyslogIdentifier=fittrainer-backup
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictNamespaces=yes
+LockPersonality=yes

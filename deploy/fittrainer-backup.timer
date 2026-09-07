@@ -1,0 +1,19 @@
+# fittrainer-backup.timer — daily database snapshot.
+#
+# A timer rather than a cron entry so the snapshot is journalled next to the
+# API's own logs and `systemctl list-timers` shows you the next run.
+
+[Unit]
+Description=Daily FitTrainer database snapshot
+Documentation=file:///srv/fittrainer/DEPLOY.md
+
+[Timer]
+# 03:30 local time. Change with `sudo systemctl edit fittrainer-backup.timer`.
+OnCalendar=*-*-* 03:30:00
+# If the box was asleep or off at 03:30, run as soon as it is back.
+Persistent=true
+RandomizedDelaySec=10m
+Unit=fittrainer-backup.service
+
+[Install]
+WantedBy=timers.target

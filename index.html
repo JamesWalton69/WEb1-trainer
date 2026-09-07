@@ -3,15 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="description" content="FitTrainer — Your AI-powered personal workout companion. Track workouts, build routines, and crush your fitness goals." />
-    <meta name="theme-color" content="#0A1128" />
+    <!--
+      viewport-fit=cover is not decoration: without it iOS letterboxes the page
+      inside the safe area and every env(safe-area-inset-*) resolves to 0px, so
+      the --safe-t/b/l/r work in src/index.css would silently do nothing and the
+      workout rails would sit in the wrong place on a notched phone.
+
+      maximum-scale=1.0 and user-scalable=no used to be here. Both are removed:
+      they block pinch-zoom entirely, which is an accessibility failure (WCAG
+      1.4.4) for anyone who needs to magnify a rep count. The reason they were
+      added — Safari zooming in when a small input is focused — is fixed
+      properly instead, by giving .input a 16px font-size.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="FitTrainer — your self-hosted personal workout companion. Track workouts, build routines, and crush your fitness goals." />
+    <meta name="theme-color" content="#070B16" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Installed to the home screen: full-bleed, and the status bar sits over
+         the page rather than in a black strip above it. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FitTrainer" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!--
+      The two display faces, fetched before the CSS that declares them so the
+      first paint is not Inter-swapped-in-late. They are self-hosted (see
+      src/fonts.css) and absent from git until `npm run fonts` runs; a preload
+      that 404s is a console warning, not a broken page.
+    -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/outfit-latin.woff2" as="font" type="font/woff2" crossorigin />
     <title>FitTrainer — Your Personal Workout Companion</title>
   </head>
   <body>

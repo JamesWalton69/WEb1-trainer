@@ -1,0 +1,57 @@
+# docker-compose.yml — the container option: nginx + the API together.
+#
+#   npm run fonts && npm run build           # dist/ must exist first
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# Bare metal (systemd + host nginx) is the primary path in DEPLOY.md. Use this
+# only if you would rather not install Node on the host.
+#
+# BEFORE THE FIRST RUN, create the password file — the stack will not start
+# without it, because nginx is the only thing guarding your data:
+#
+#   htpasswd -c deploy/.htpasswd yourname
+#
+# deploy/.htpasswd is gitignored. It holds a bcrypt hash rather than a
+# password, but keep it out of the repo anyway.
+#
+# TLS is NOT handled here. Put Caddy, Traefik or the host's nginx in front with
+# a real certificate: Basic Auth over plain HTTP sends the password in the
+# clear on every request, and the service worker needs a secure origin.
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      # Reachable from the web container over the compose network, which is why
+      # loopback will not do. There are no `ports:` here, so nothing outside
+      # this network can connect, and nginx supplies the password — that is why
+      # ALLOW_INSECURE is acceptable in this one spot. Do not add a `ports:`
+      # mapping to this service; it would publish an unauthenticated, writable
+      # database.
+      HOST: 0.0.0.0
+      FITTRAINER_ALLOW_INSECURE: "1"
+    volumes:
+      - fittrainer-data:/data
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      # Loopback only: the TLS terminator in front of this is expected on the
+      # same host. Change to "80:80" only if that proxy is elsewhere.
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    depends_on:
+      # Only waits for the container to start, not for it to be healthy —
+      # nginx does not need the API up to serve the app, and the client treats
+      # the network as optional anyway.
+      - api
+
+volumes:
+  fittrainer-data:

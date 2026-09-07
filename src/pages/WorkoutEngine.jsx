@@ -1,42 +1,29 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Pause, Play, Square, Volume2, VolumeX, Camera, CameraOff, Mic, MicOff, Music } from 'lucide-react';
+import {
+  Pause, Play, Square, Volume2, VolumeX, Mic, MicOff, Music, X,
+  Sun, SunDim, SkipForward,
+} from 'lucide-react';
 import { getRandomQuote } from '../lib/quotes';
 import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay } from '../lib/weeklyPlan';
-import * as tf from '@tensorflow/tfjs';
-import * as poseDetection from '@tensorflow-models/pose-detection';
+import { PHASE_COLORS, getPhaseColor, phaseVars, isPhaseActive } from '../lib/phaseColor';
+import { useWakeLock } from '../lib/useWakeLock';
 
 const defaultPlanDay = resolveWeeklyPlanDay('monday');
 const defaultWorkout = defaultPlanDay.executableRoutine;
 
-const PHASE_COLORS = {
-  'GET READY': '#334155',
-  'NEXT': '#4F46E5',
-  'SET': '#6C63FF',
-  'DOWN': '#059669',
-  'UP': '#DC2626',
-  'REST': '#1E293B',
-  'TRANSITION': '#1E293B',
-  'COMPLETE': '#D97706',
-  'PAUSED': '#D97706',
-  'WARM-UP': '#3B82F6',
-};
-
-function getPhaseColor(phase) {
-  if (phase.includes('DOWN')) return PHASE_COLORS.DOWN;
-  if (phase.includes('UP') && !phase.includes('PUSHUP')) return PHASE_COLORS.UP;
-  if (phase.includes('NEXT')) return PHASE_COLORS.NEXT;
-  if (phase.includes('SET')) return PHASE_COLORS.SET;
-  return PHASE_COLORS[phase] || '#1E293B';
-}
+// Phases where the card shows setup or recovery copy rather than a live rep, so
+// the exercise title and image are hidden. Listed once instead of being spelled
+// out at three call sites, where they had already drifted apart.
+const CHROME_FREE_PHASES = ['REST', 'TRANSITION', 'COMPLETE', 'GET READY', 'WARM-UP'];
 
 export default function WorkoutEngine() {
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const activeWorkout = location.state?.routine || defaultWorkout;
   const workoutName = location.state?.routineName || `${weeklyCalisthenicsPlan.title} · ${defaultPlanDay.label} · ${defaultPlanDay.focus}`;
-  
+
   // Apply Global Settings
   const TIMING = location.state?.routineSettings || defaultPlanDay.routineSettings;
 
@@ -47,20 +34,19 @@ export default function WorkoutEngine() {
   const [muted, setMuted] = useState(false);
   const [restQuote, setRestQuote] = useState(null);
 
-  // Camera & AI State
-  const [cameraActive, setCameraActive] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
+  // Voice & music state
   const [voiceActive, setVoiceActive] = useState(false);
   const [showSpotify, setShowSpotify] = useState(false);
   const recognitionRef = useRef(null);
   const voiceActiveRef = useRef(false);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const detectorRef = useRef(null);
-  const animationFrameId = useRef(null);
+
+  // On by default: this screen is meant to be propped against a wall and looked
+  // at, and a phone that sleeps 30 seconds into a plank makes the app useless.
+  // See src/lib/useWakeLock.js for why it cannot be a fire-and-forget request.
+  const [keepAwake, setKeepAwake] = useState(true);
+  const wakeLock = useWakeLock(keepAwake);
 
   const [overallProgress, setOverallProgress] = useState(0);
-  const [aiRepCount, setAiRepCount] = useState(0);
   const [countdown, setCountdown] = useState(0);
   const [countdownMax, setCountdownMax] = useState(0);
   const [inWarmup, setInWarmup] = useState(false);
@@ -75,23 +61,50 @@ export default function WorkoutEngine() {
   const currentExRef = useRef(null);
   const skipWarmupRef = useRef(false);
 
-  const repStateRef = useRef("UP");
-  const lastCorrectionTimeRef = useRef(0);
+  // Set by the effect cleanup, i.e. only when the screen actually goes away.
+  // The Stop button and the ESC key also set stoppedRef, and those *should*
+  // navigate to the summary, so the two cases need telling apart.
+  const leftScreenRef = useRef(false);
+
+  // Every timeout the run loop schedules, so unmount can clear them. The
+  // 3-second hold on COMPLETE is the one that bit: leave the screen during it —
+  // browser Back, a notification tap — and the timer stayed armed and then
+  // navigated to /post-workout from wherever the user had got to.
+  const timersRef = useRef(new Set());
+  const later = useCallback((fn, ms) => {
+    const id = setTimeout(() => {
+      timersRef.current.delete(id);
+      fn();
+    }, ms);
+    timersRef.current.add(id);
+    return id;
+  }, []);
+
+  // Warm-up config arrives once via history state and is fixed for the whole
+  // run. Held in a ref so the workout loop does not depend on a fresh array
+  // identity every render — that would rebuild runWorkout and restart the
+  // session mid-workout.
+  const warmupRef = useRef({
+    minutes: location.state?.warmUpMinutes || 0,
+    activities: location.state?.warmup || [],
+  });
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { voiceActiveRef.current = voiceActive; }, [voiceActive]);
 
   const speak = useCallback((text) => {
-    if (mutedRef.current || !('speechSynthesis' in window)) return;
+    if (mutedRef.current || leftScreenRef.current || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const msg = new SpeechSynthesisUtterance(text);
     msg.rate = 1.0;
     window.speechSynthesis.speak(msg);
   }, []);
-
   const beep = useCallback((frequency) => {
-    if (mutedRef.current) return;
+    // leftScreenRef because the run loop only notices the unmount at its next
+    // 100 ms slice; a beep in that window would build a fresh AudioContext
+    // right after the cleanup closed the old one, and nothing would close it.
+    if (mutedRef.current || leftScreenRef.current) return;
     if (!audioCtxRef.current) {
       audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -109,111 +122,15 @@ export default function WorkoutEngine() {
     osc.stop(ctx.currentTime + 0.2);
   }, []);
 
-  const calculateAngle = (A, B, C) => {
-    if (!A || !B || !C || A.score < 0.3 || B.score < 0.3 || C.score < 0.3) return null;
-    const radians = Math.atan2(C.y - B.y, C.x - B.x) - Math.atan2(A.y - B.y, A.x - B.x);
-    let angle = Math.abs((radians * 180.0) / Math.PI);
-    if (angle > 180.0) angle = 360 - angle;
-    return angle;
-  };
-
-  const analyzeForm = (poses) => {
-    if (poses.length === 0 || !currentExRef.current) return;
-    const keypoints = poses[0].keypoints;
-    const getKp = name => keypoints.find(k => k.name === name);
-    const exercise = currentExRef.current.toLowerCase();
-    
-    // Squats
-    if (exercise.includes("squat")) {
-      const hip = getKp('left_hip') || getKp('right_hip');
-      const knee = getKp('left_knee') || getKp('right_knee');
-      const ankle = getKp('left_ankle') || getKp('right_ankle');
-      const angle = calculateAngle(hip, knee, ankle);
-      if (angle !== null) {
-        if (angle > 165) {
-            if (repStateRef.current === "DOWN") setAiRepCount(p => p + 1);
-            repStateRef.current = "UP";
-        }
-        if (angle < 90) {
-            repStateRef.current = "DOWN";
-        } else if (angle > 90 && angle < 140 && repStateRef.current === "UP") {
-            if (Date.now() - lastCorrectionTimeRef.current > 3000) {
-                speak("Squat deeper!");
-                lastCorrectionTimeRef.current = Date.now();
-            }
-        }
-      }
-    }
-    // Pushups
-    if (exercise.includes("pushup")) {
-      const shoulder = getKp('left_shoulder') || getKp('right_shoulder');
-      const elbow = getKp('left_elbow') || getKp('right_elbow');
-      const wrist = getKp('left_wrist') || getKp('right_wrist');
-      const angle = calculateAngle(shoulder, elbow, wrist);
-      if (angle !== null) {
-        if (angle > 150) {
-            if (repStateRef.current === "DOWN") setAiRepCount(p => p + 1);
-            repStateRef.current = "UP";
-        }
-        if (angle < 80) {
-            repStateRef.current = "DOWN";
-        } else if (angle > 80 && angle < 130 && repStateRef.current === "UP") {
-            if (Date.now() - lastCorrectionTimeRef.current > 3000) {
-                speak("Lower your chest!");
-                lastCorrectionTimeRef.current = Date.now();
-            }
-        }
-      }
-    }
-  };
-
-  // --- AI Camera Functions ---
-  const requestCameraPermission = async () => {
-    const confirmation = window.confirm("Enable the AI Posture Tracker using your camera? Your video stream is analyzed securely on your device and never sent to the cloud.");
-    if (!confirmation) return;
-
-    setAiLoading(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      videoRef.current.srcObject = stream;
-      videoRef.current.onloadedmetadata = async () => {
-        videoRef.current.play();
-        setCameraActive(true);
-
-        // Initialize TensorFlow and PoseDetection MoveNet
-        await tf.ready();
-        detectorRef.current = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
-            modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
-        });
-        
-        setAiLoading(false);
-        detectPose(); // Start the loop
-      };
-    } catch (err) {
-      console.error(err);
-      alert("Microphone/Camera permission denied or failed to load hardware.");
-      setAiLoading(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-       videoRef.current.srcObject.getTracks().forEach(track => track.stop());
-    }
-    setCameraActive(false);
-    if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
-  };
-
-  // The AI frame analysis loop
-  const detectPose = async () => {
-      if (!detectorRef.current || !videoRef.current || !canvasRef.current) return;
-      
-      const poses = await detectorRef.current.estimatePoses(videoRef.current);
-      drawPoseOnCanvas(poses);
-      analyzeForm(poses);
-
-      animationFrameId.current = requestAnimationFrame(detectPose);
-  };
+  // A short buzz on every phase change, so a cue lands even with the phone
+  // muted and face-down in a pocket. Not supported on iOS Safari at all, and
+  // Chrome ignores it until the user has interacted with the page — both cases
+  // are silent no-ops rather than errors.
+  const vibrate = useCallback((pattern) => {
+    if (mutedRef.current || leftScreenRef.current) return;
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+    try { navigator.vibrate(pattern); } catch { /* blocked by policy */ }
+  }, []);
 
   const toggleVoiceControl = () => {
       if (voiceActive) {
@@ -221,18 +138,18 @@ export default function WorkoutEngine() {
           setVoiceActive(false);
           return;
       }
-      
+
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
           alert("Speech recognition isn't supported in your browser.");
           return;
       }
-      
+
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
-      
+
       recognition.onresult = (event) => {
           const results = event.results;
           const latest = results[results.length - 1];
@@ -243,7 +160,7 @@ export default function WorkoutEngine() {
               else if (command.includes('stop')) stoppedRef.current = true;
           }
       };
-      
+
       recognition.onend = () => {
           if (recognitionRef.current && voiceActiveRef.current) {
               // start() throws if recognition is already running; ignore it.
@@ -254,26 +171,10 @@ export default function WorkoutEngine() {
               }
           }
       };
-      
+
       recognition.start();
       recognitionRef.current = recognition;
       setVoiceActive(true);
-  };
-
-  const drawPoseOnCanvas = (poses) => {
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      if (poses.length > 0) {
-          const pose = poses[0];
-          pose.keypoints.forEach(kpt => {
-              if (kpt.score > 0.3) {
-                  ctx.beginPath();
-                  ctx.arc(kpt.x, kpt.y, 5, 0, 2 * Math.PI);
-                  ctx.fillStyle = "var(--neon-pink)";
-                  ctx.fill();
-              }
-          });
-      }
   };
 
   const interruptibleSleep = useCallback(async (seconds) => {
@@ -297,11 +198,14 @@ export default function WorkoutEngine() {
     }
     setCountdown(0);
   }, []);
-
   const totalWork = activeWorkout.reduce((sum, ex) => sum + (ex.reps * TIMING.sets), 0);
 
   const runWorkout = useCallback(async () => {
     const start = Date.now();
+    // Stable id for this run, decided once and carried into PostWorkout. The
+    // server upserts on it, so logging the session and then attaching feedback
+    // updates one row instead of creating two.
+    const sessionId = `w-${start}-${Math.random().toString(36).slice(2, 8)}`;
     let completedReps = 0;
 
     try {
@@ -313,11 +217,11 @@ export default function WorkoutEngine() {
       }
 
       // Warm-up phase
-      const warmUpMinutes = location.state?.warmUpMinutes || 0;
-      const warmupActivities = location.state?.warmup || [];
+      const warmUpMinutes = warmupRef.current.minutes;
+      const warmupActivities = warmupRef.current.activities;
       if (warmUpMinutes > 0) {
         setPhase("WARM-UP");
-        const warmupText = warmupActivities.length > 0 
+        const warmupText = warmupActivities.length > 0
           ? warmupActivities.join(" | ")
           : `${warmUpMinutes} min light warm-up`;
         setSubInfo(warmupText);
@@ -325,10 +229,14 @@ export default function WorkoutEngine() {
         setInWarmup(true);
         try {
           await interruptibleSleep(warmUpMinutes * 60);
-        } catch (e) {
-          if (e.message !== "Stopped") throw e;
+        } finally {
+          // finally, not catch: Stop pressed during the warm-up has to keep
+          // propagating so the run ends. The old `catch` swallowed it and fell
+          // through into the first exercise, which then threw at its own next
+          // sleep — the session did stop, but only after flashing "NEXT: ..."
+          // on a screen the user had already asked to leave.
+          setInWarmup(false);
         }
-        setInWarmup(false);
       }
 
       for (let i = 0; i < activeWorkout.length; i++) {
@@ -340,6 +248,7 @@ export default function WorkoutEngine() {
         setPhase(`NEXT: ${ex.name}`);
         setSubInfo(`Exercise ${i + 1} of ${activeWorkout.length}`);
         speak(`Next is ${ex.name}`);
+        vibrate(40);
         await interruptibleSleep(3);
 
         for (let s = 1; s <= TIMING.sets; s++) {
@@ -354,11 +263,13 @@ export default function WorkoutEngine() {
             setPhase(`REP ${r} — DOWN`);
             setSubInfo(`${ex.name} · Set ${s}/${TIMING.sets}`);
             beep(1500);
+            vibrate(25);
             await interruptibleSleep(ex.tension);
 
             setPhase("UP");
             setSubInfo(`${ex.name} · Set ${s}/${TIMING.sets}`);
             beep(500);
+            vibrate(25);
             await interruptibleSleep(Math.max(ex.reset, 0.2));
 
             completedReps++;
@@ -370,19 +281,21 @@ export default function WorkoutEngine() {
             setSubInfo(`Next: Set ${s + 1}`);
             setRestQuote(getRandomQuote());
             speak("Resting");
+            vibrate([40, 60, 40]);
             await interruptibleSleep(TIMING.restBetweenSet);
             setRestQuote(null);
           }
         }
 
         if (i < activeWorkout.length - 1) {
-          const currentRest = activeWorkout[i].restSeconds !== undefined && activeWorkout[i].restSeconds !== null 
-            ? activeWorkout[i].restSeconds 
+          const currentRest = activeWorkout[i].restSeconds !== undefined && activeWorkout[i].restSeconds !== null
+            ? activeWorkout[i].restSeconds
             : TIMING.restBetweenEx;
           if (currentRest > 0) {
             setPhase("TRANSITION");
             setSubInfo(`Up next: ${activeWorkout[i + 1].name}`);
             setRestQuote(getRandomQuote());
+            vibrate([40, 60, 40]);
             await interruptibleSleep(currentRest);
             setRestQuote(null);
           }
@@ -393,48 +306,84 @@ export default function WorkoutEngine() {
       setPhase("COMPLETE");
       setSubInfo("Amazing work! 🎉");
       speak("Session Complete! Great job!");
+      vibrate([80, 60, 80, 60, 160]);
 
       const elapsed = (Date.now() - start) / 1000 / 60;
       const activeMinutes = elapsed - (totalPauseDurRef.current / 60);
 
-      setTimeout(() => {
+      later(() => {
+        if (leftScreenRef.current) return;
         navigate('/post-workout', { state: {
+          id: sessionId,
           status: 'Completed',
           active_minutes: Math.round(activeMinutes * 100) / 100,
           pauses: pauseCountRef.current,
           last_exercise: activeWorkout[activeWorkout.length - 1].name,
+          routine_name: workoutName,
           routine: activeWorkout,
         }});
       }, 3000);
 
     } catch (e) {
       if (e.message !== "Stopped") console.error(e);
-      else {
+      // Unmounting throws "Stopped" through the same path as the Stop button.
+      // Navigating here would fight whatever the user is actually looking at,
+      // and React would warn about updating an unmounted component.
+      else if (!leftScreenRef.current) {
         const elapsed = (Date.now() - start) / 1000 / 60;
         const activeMinutes = elapsed - (totalPauseDurRef.current / 60);
         navigate('/post-workout', { state: {
+          id: sessionId,
           status: 'Incomplete',
           active_minutes: Math.round(activeMinutes * 100) / 100,
           pauses: pauseCountRef.current,
           last_exercise: currentExRef.current || 'None',
+          routine_name: workoutName,
           routine: activeWorkout,
         }});
       }
     }
-  }, [speak, beep, interruptibleSleep, navigate, totalWork, TIMING, activeWorkout, workoutName]);
-
+  }, [speak, beep, vibrate, interruptibleSleep, navigate, later, totalWork, TIMING, activeWorkout, workoutName]);
   useEffect(() => {
     stoppedRef.current = false;
+    leftScreenRef.current = false;
     pauseCountRef.current = 0;
     totalPauseDurRef.current = 0;
-    setTimeout(() => {
+    // Captured for the cleanup. The Set is created once and never reassigned,
+    // so this is the same object either way — but reading .current in cleanup
+    // is the pattern that leads to stale-node bugs, so lint flags it.
+    const timers = timersRef.current;
+    const kickoff = later(() => {
         if (!stoppedRef.current) runWorkout();
     }, 0);
-    return () => { 
-        stoppedRef.current = true; 
-        stopCamera();
+    return () => {
+        clearTimeout(kickoff);
+        leftScreenRef.current = true;
+        stoppedRef.current = true;
+        // Cancel the completion hold and anything else still armed, or it fires
+        // after we are gone and navigates over the next screen.
+        for (const id of timers) clearTimeout(id);
+        timers.clear();
+        // Stop voice recognition and any queued speech so the mic and TTS
+        // do not keep running after we leave the workout screen.
+        voiceActiveRef.current = false;
+        if (recognitionRef.current) {
+            try { recognitionRef.current.stop(); } catch { /* not running */ }
+            recognitionRef.current = null;
+        }
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        // A pattern started right before we left would otherwise keep buzzing
+        // on the dashboard.
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            try { navigator.vibrate(0); } catch { /* blocked by policy */ }
+        }
+        // The oscillator keeps the audio hardware awake on mobile until the
+        // context is closed, which on iOS shows as a stuck audio-route icon.
+        const ctx = audioCtxRef.current;
+        audioCtxRef.current = null;
+        if (ctx && ctx.state !== 'closed') ctx.close().catch(() => {});
     };
-  }, [runWorkout]);
+  }, [runWorkout, later]);
 
   const togglePause = useCallback(() => {
     setPaused(prev => {
@@ -466,141 +415,249 @@ export default function WorkoutEngine() {
   const ringDashOffset = ringCircumference * (1 - ringProgress);
 
   const bgColor = paused ? PHASE_COLORS.PAUSED : getPhaseColor(phase);
-
+  // Pulses only during reps, and never while paused — a breathing screen that
+  // is not counting anything reads as "still running".
+  const fieldActive = !paused && isPhaseActive(phase);
+  const showChrome = !CHROME_FREE_PHASES.includes(phase);
+  const wakeLockOn = keepAwake && wakeLock.active;
   return (
-    <div className="page" style={{
-      height: '100vh', width: '100vw',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', position: 'relative', overflow: 'hidden',
-      padding: '24px',
-    }}>
-      {/* Top Controls */}
-      <div style={{
-        position: 'absolute', top: '24px', left: '24px', right: '24px',
-        display: 'flex', justifyContent: 'space-between', zIndex: 10,
-      }}>
-        <button className="btn btn-icon" onClick={() => { stoppedRef.current = true; }}>
-          <Square size={20} />
-        </button>
-        <div style={{ display: 'flex', gap: '8px' }}>
-            <button className={`btn btn-icon ${cameraActive ? 'btn-accent' : ''}`} onClick={cameraActive ? stopCamera : requestCameraPermission} title="AI Posture Tracking">
-                {aiLoading ? "..." : (cameraActive ? <Camera size={20} /> : <CameraOff size={20} />)}
-            </button>
-            <button className={`btn btn-icon ${voiceActive ? 'btn-accent' : ''}`} onClick={toggleVoiceControl} title="Voice Commands (Pause/Play/Stop)">
-                {voiceActive ? <Mic size={20} /> : <MicOff size={20} />}
-            </button>
-            <button className="btn btn-icon" onClick={() => setMuted(!muted)}>
-            {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            </button>
-        </div>
-      </div>
+    <div
+      className={`workout-shell${fieldActive ? ' is-active' : ''}`}
+      style={{ ...phaseVars(bgColor), padding: 'clamp(12px, 4vw, 24px)' }}
+    >
+      {/* The colour field itself. Separate elements so the vignette can animate
+          and the per-phase flash can remount without touching the wash. */}
+      <div className="phase-field" />
+      {/* key on the phase string: React tears the node down and builds a new
+          one on every change, which restarts the CSS animation. Without it the
+          animation runs once for the whole session. */}
+      <div key={phase} className="phase-flash" />
 
-      {/* AI Posture Camera Feed */}
+      {/* Overall progress, pinned above the notch inset. */}
       <div style={{
-          position: 'absolute', top: '80px', right: '24px', zIndex: 20,
-          display: cameraActive ? 'block' : 'none',
-          borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--accent)',
-          boxShadow: 'var(--shadow-lg)', width: '200px', height: '150px'
+        position: 'absolute', top: 0, left: 0, right: 0, height: '4px',
+        background: 'rgba(0,0,0,0.28)', zIndex: 12,
       }}>
-          <video ref={videoRef} playsInline style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-          <canvas ref={canvasRef} width="640" height="480" style={{ position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
-          {cameraActive && (
-              <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'var(--accent)', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700 }}>
-                  AI ACTIVE | REPS: {aiRepCount}
-              </div>
-          )}
-      </div>
-
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.05)' }}>
         <div style={{
           height: '100%', width: `${overallProgress}%`,
-          background: 'var(--primary)',
+          background: 'rgba(255,255,255,0.9)',
+          boxShadow: '0 0 12px rgba(255,255,255,0.6)',
           transition: 'width 0.3s ease',
         }} />
       </div>
 
-      {/* Main Focus Card */}
-      <div className="glass-solid" style={{
-        width: '100%',
-        maxWidth: '520px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: '32px',
-        border: `1px solid ${bgColor}aa`,
-        boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 16px ${bgColor}10`,
-        borderRadius: 'var(--radius-lg)',
-        position: 'relative',
-        zIndex: 5
-      }}>
-        {currentEx && !['REST', 'TRANSITION', 'COMPLETE', 'GET READY', 'WARM-UP'].includes(phase) && (
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-primary)', marginBottom: '16px', textAlign: 'center' }}>
+      {/* Top rail */}
+      <div className="workout-rail workout-rail-top">
+        <button
+          className="btn btn-icon"
+          onClick={() => { stoppedRef.current = true; }}
+          aria-label="Stop workout"
+        >
+          <Square size={20} />
+        </button>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Screen-awake toggle. Rendered only where the API exists, because a
+              switch that cannot do anything is worse than no switch. */}
+          {wakeLock.supported && (
+            <button
+              className="btn btn-icon"
+              onClick={() => setKeepAwake((v) => !v)}
+              aria-pressed={keepAwake}
+              title={wakeLockOn
+                ? 'Screen stays awake — tap to allow sleeping'
+                : wakeLock.error === 'blocked'
+                  ? 'Screen lock unavailable on this connection (needs HTTPS)'
+                  : 'Screen may sleep — tap to keep it awake'}
+              style={wakeLockOn ? {
+                background: 'rgba(255,255,255,0.24)',
+                borderColor: 'rgba(255,255,255,0.5)',
+              } : undefined}
+            >
+              {wakeLockOn ? <Sun size={20} /> : <SunDim size={20} />}
+            </button>
+          )}
+          <button
+            className={`btn btn-icon ${voiceActive ? 'btn-accent' : ''}`}
+            onClick={toggleVoiceControl}
+            aria-pressed={voiceActive}
+            title="Voice commands (pause / play / stop)"
+          >
+            {voiceActive ? <Mic size={20} /> : <MicOff size={20} />}
+          </button>
+          <button
+            className="btn btn-icon"
+            onClick={() => setMuted(!muted)}
+            aria-pressed={muted}
+            aria-label={muted ? 'Unmute cues' : 'Mute cues'}
+          >
+            {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+          </button>
+        </div>
+      </div>
+      {/* Main focus card */}
+      <div className="workout-card">
+        {currentEx && showChrome && (
+          <h2 style={{
+            fontSize: 'clamp(1.05rem, 4vw, 1.4rem)', fontWeight: 800,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            color: 'rgba(255,255,255,0.9)', marginBottom: '14px',
+            textAlign: 'center', maxWidth: '100%', overflowWrap: 'break-word',
+          }}>
             {currentEx.name}
           </h2>
         )}
 
         {currentEx && currentEx.gif && !['REST', 'TRANSITION', 'COMPLETE', 'WARM-UP'].includes(phase) && (
-          <div className="animate-scale-in" style={{ marginBottom: '24px' }}>
-            <img src={currentEx.gif} alt={currentEx.name} className="exercise-img" style={{ height: '160px', borderRadius: 'var(--radius-md)', objectFit: 'cover' }} />
+          <div className="animate-scale-in" style={{ marginBottom: '20px' }}>
+            <img
+              src={currentEx.gif}
+              alt={currentEx.name}
+              className="exercise-img"
+              style={{ height: 'clamp(96px, 22vh, 160px)', borderRadius: 'var(--radius-md)', objectFit: 'cover' }}
+            />
           </div>
         )}
 
         {countdown > 0 && (
-          <div className="countdown-container" style={{ marginBottom: '24px' }}>
-            <svg width="140" height="140" className="progress-ring">
-              <circle className="progress-ring__circle-bg" cx="70" cy="70" r={ringRadius} strokeWidth="6" />
-              <circle className="progress-ring__circle" cx="70" cy="70" r={ringRadius} strokeWidth="6" stroke={bgColor} strokeDasharray={ringCircumference} strokeDashoffset={ringDashOffset} />
+          <div className="countdown-container" style={{ marginBottom: '20px' }}>
+            <svg width="150" height="150" className="progress-ring" aria-hidden="true">
+              <circle
+                className="progress-ring__circle-bg"
+                cx="75" cy="75" r={ringRadius} strokeWidth="7"
+                style={{ stroke: 'rgba(0,0,0,0.28)' }}
+              />
+              <circle
+                className="progress-ring__circle"
+                cx="75" cy="75" r={ringRadius} strokeWidth="7"
+                stroke="rgba(255,255,255,0.95)"
+                strokeDasharray={ringCircumference}
+                strokeDashoffset={ringDashOffset}
+              />
             </svg>
-            <span className="countdown-text" style={{ fontSize: '2.5rem' }}>{countdown}</span>
+            <span
+              className="countdown-text"
+              style={{ fontSize: 'clamp(2rem, 9vw, 2.75rem)' }}
+              aria-live="off"
+            >
+              {countdown}
+            </span>
           </div>
         )}
 
         {restQuote && (phase === 'REST' || phase === 'TRANSITION') && (
           <div style={{ maxWidth: '440px', textAlign: 'center', marginBottom: '16px', padding: '0 8px' }}>
-            <p style={{ fontStyle: 'italic', color: 'var(--text-secondary)', fontSize: '0.95rem' }}>"{restQuote.text}"</p>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>— {restQuote.author}</p>
+            <p style={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginBottom: '4px' }}>
+              "{restQuote.text}"
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>— {restQuote.author}</p>
           </div>
         )}
 
-        <h1 className="workout-phase" style={{ fontSize: '3rem', textAlign: 'center', lineHeight: 1.1, color: paused ? 'var(--warning)' : 'var(--text-primary)' }}>
-          {paused ? "PAUSED" : phase}
+        {/* The one thing you read from across the room. aria-live so a screen
+            reader announces each phase without the countdown spamming it. */}
+        <h1 className="workout-phase" aria-live="polite">
+          {paused ? 'PAUSED' : phase}
         </h1>
 
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', marginTop: '8px', fontWeight: 500, textAlign: 'center' }}>
-          {paused ? 'Press SPACE to resume' : subInfo}
+        <p className="workout-sub">
+          {paused ? 'Tap play or press SPACE to resume' : subInfo}
         </p>
 
-        {inWarmup && (
-          <button 
-            onClick={() => { skipWarmupRef.current = true; }} 
-            className="btn btn-ghost" 
-            style={{ marginTop: '24px' }}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '14px', marginTop: '24px',
+        }}>
+          {inWarmup && (
+            <button
+              onClick={() => { skipWarmupRef.current = true; }}
+              className="btn btn-ghost"
+              style={{ background: 'rgba(255,255,255,0.14)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+            >
+              <SkipForward size={18} /> Skip
+            </button>
+          )}
+
+          <button
+            onClick={togglePause}
+            className="workout-primary-btn"
+            aria-label={paused ? 'Resume workout' : 'Pause workout'}
           >
-            Skip Warm-up
+            {paused ? <Play size={30} /> : <Pause size={30} />}
           </button>
+        </div>
+      </div>
+      {/* Bottom rail: status line, plus the music toggle. Centred rather than
+          corner-pinned so nothing sits under a thumb wrapped around the phone. */}
+      <div className="workout-rail workout-rail-bottom">
+        {showSpotify && (
+          <div
+            className="animate-scale-in"
+            style={{
+              background: 'rgba(6,10,22,0.9)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              padding: '8px', borderRadius: 'var(--radius-lg)',
+              marginBottom: '10px', width: 'min(320px, 100%)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+              <button
+                onClick={() => setShowSpotify(false)}
+                aria-label="Close music player"
+                style={{
+                  background: 'none', border: 'none', color: 'var(--text-secondary)',
+                  cursor: 'pointer', padding: '2px', lineHeight: 1,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <iframe
+              title="Workout playlist"
+              style={{ borderRadius: 'var(--radius-md)', display: 'block', width: '100%' }}
+              src="https://open.spotify.com/embed/playlist/37i9dQZF1DX76Wlfdnj7AP?utm_source=generator"
+              height="152"
+              frameBorder="0"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            />
+          </div>
         )}
 
-        <button onClick={togglePause} className="btn-icon" style={{ marginTop: '24px', width: 56, height: 56, borderRadius: '50%', background: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {paused ? <Play size={24} /> : <Pause size={24} />}
-        </button>
-      </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button
+            className="btn btn-icon"
+            onClick={() => setShowSpotify(!showSpotify)}
+            aria-pressed={showSpotify}
+            aria-label="Music"
+          >
+            <Music size={20} />
+          </button>
 
-      <div style={{ position: 'absolute', bottom: '24px', color: 'var(--text-muted)', fontSize: '0.75rem', textAlign: 'center', }}>
-        SPACE = Pause · ESC = Stop · {overallProgress}% Complete
-      </div>
+          <span className="pill" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.18)', color: 'rgba(255,255,255,0.8)' }}>
+            {overallProgress}% done
+          </span>
 
-      {/* Spotify Widget */}
-      <div style={{ position: 'absolute', bottom: '24px', right: '24px', zIndex: 30, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-         {showSpotify && (
-             <div className="animate-scale-in" style={{ background: 'var(--bg-main)', border: '1px solid rgba(255,255,255,0.08)', padding: '8px', borderRadius: 'var(--radius-lg)' }}>
-                 <iframe style={{ borderRadius: 'var(--radius-md)' }} src="https://open.spotify.com/embed/playlist/37i9dQZF1DX76Wlfdnj7AP?utm_source=generator" width="280" height="152" frameBorder="0" allowFullScreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
-             </div>
-         )}
-         <button className="btn btn-icon" style={{ background: 'var(--accent)', color: 'white', opacity: 0.9 }} onClick={() => setShowSpotify(!showSpotify)}>
-             <Music size={20} />
-         </button>
-      </div>
+          {/* Honest about the one case that matters: the toggle is on but the
+              browser will not grant the lock, so the screen *will* sleep. */}
+          {keepAwake && wakeLock.supported && !wakeLock.active && (
+            <span className="pill pill-warn">screen may sleep</span>
+          )}
+          {!wakeLock.supported && (
+            <span className="pill" style={{ background: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.18)' }}>
+              raise your phone’s auto-lock
+            </span>
+          )}
+        </div>
 
+        {/* Keyboard hints are meaningless on a touchscreen. */}
+        <div className="only-pointer" style={{
+          marginTop: '8px', color: 'rgba(255,255,255,0.55)',
+          fontSize: '0.72rem', textAlign: 'center',
+        }}>
+          SPACE = pause · ESC = stop
+        </div>
+      </div>
     </div>
   );
 }

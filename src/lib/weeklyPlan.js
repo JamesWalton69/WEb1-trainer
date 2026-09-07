@@ -1,6 +1,7 @@
 // weeklyPlan.js — Dynamic routine loader and parser for workout-routine.json
 
 import workoutRoutine from './workout-routine.json';
+import { normalizeExerciseKey } from './exerciseKey.js';
 
 // Mapping day numbers to IDs and labels
 const dayIdMap = {
@@ -72,8 +73,16 @@ function parseReset(repsStr, exerciseName) {
 
 // Dynamic days construction
 const parsedDays = workoutRoutine.days.map(day => {
-  const isRest = day.name.toLowerCase() === 'rest';
-  
+  // A rest day is one with no prescribed exercises whose name says "rest".
+  // The old test was `day.name.toLowerCase() === 'rest'`, an exact match that
+  // nothing in the plan satisfies — day 7 is "Sunday — FULL REST" — so Sunday
+  // was treated as a training day and the dashboard offered a walk-and-stretch
+  // session built from its optional activities. `restDay: true` in the JSON
+  // overrides the name check.
+  const isRest = typeof day.restDay === 'boolean'
+    ? day.restDay
+    : !day.exercises?.length && /\brest\b/i.test(day.name);
+
   // Custom warmup text based on warmUpMinutes, or custom warmup array in JSON
   const warmup = day.warmup || (day.warmUpMinutes > 0 ? [
     `Light mobility movements (shoulder & hip rolls) × 2 min`,
@@ -95,7 +104,11 @@ const parsedDays = workoutRoutine.days.map(day => {
 
   // Flat-map exercises into executable routine sets
   let executableRoutine = [];
-  if (day.exercises) {
+  if (isRest) {
+    // Nothing to run. Leaving this empty is what makes the dashboard's Start
+    // button stay disabled instead of launching a session on a rest day.
+    executableRoutine = [];
+  } else if (day.exercises) {
     day.exercises.forEach(ex => {
       const setsCount = ex.sets || 1;
       const repsCount = parseReps(ex.reps);
@@ -199,14 +212,19 @@ export function resolveWeeklyPlanDay(dayId) {
   return byId[dayId] || byId.monday;
 }
 
-// Applies user progression modifiers to dynamic exercise reps and static hold durations
+// Applies user progression modifiers to dynamic exercise reps and static hold
+// durations.
+//
+// Modifiers are keyed canonically (exerciseKey.js), which is what lets a plan
+// day's "Push-ups" and a custom routine's "Pushups" draw on the same offset.
+// The floors here must match MIN_REPS / MIN_HOLD in localStore.js: this decides
+// what the user actually performs, and that decides when to stop easing off.
 export function applyProgression(workout, modifiers) {
   if (!modifiers || Object.keys(modifiers).length === 0) return workout;
   return workout.map(ex => {
-    const mod = modifiers[ex.name] || {};
+    const mod = modifiers[normalizeExerciseKey(ex.name)] || {};
     let newReps = ex.reps;
     let newTension = ex.tension;
-    let newReset = ex.reset;
 
     if (ex.reps > 1) {
       newReps = Math.max(1, ex.reps + (mod.reps || 0));
@@ -214,12 +232,7 @@ export function applyProgression(workout, modifiers) {
       newTension = Math.max(5, ex.tension + (mod.tension || 0));
     }
 
-    return {
-      ...ex,
-      reps: newReps,
-      tension: newTension,
-      reset: newReset
-    };
+    return { ...ex, reps: newReps, tension: newTension };
   });
 }
 

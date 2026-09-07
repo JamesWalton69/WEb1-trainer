@@ -25,15 +25,17 @@ import { getDailyQuote } from '../lib/quotes';
 import {
   getWorkoutHistory, computeStats, computeBadges,
   buildChartData, buildStreakCalendar, getCustomWorkouts, deleteCustomWorkout,
-  getUserProgression, LOCAL_USER_ID
+  getUserProgression, getDisplayName, setDisplayName, LOCAL_USER_ID
 } from '../lib/localStore';
 import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay, applyProgression, getProgressionDisplayList } from '../lib/weeklyPlan';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  // No accounts: the display name is a local preference and data is namespaced
-  // under a single fixed local id.
-  const userName = localStorage.getItem('userName') || 'Athlete';
+  // No accounts. The display name is the one preference there is; it syncs
+  // through the server's profile table so a second device knows it too. Held in
+  // state rather than read from localStorage during render, so renaming does
+  // not need a page reload.
+  const [userName, setUserName] = useState('Athlete');
   const userId = LOCAL_USER_ID;
   const dailyQuote = getDailyQuote();
 
@@ -51,6 +53,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadData() {
       try {
+          const name = await getDisplayName();
+          if (name) setUserName(name);
           const sessions = await getWorkoutHistory(userId);
           const computedStats = computeStats(sessions);
           const computedBadges = computeBadges(computedStats, sessions);
@@ -75,16 +79,11 @@ export default function Dashboard() {
   }, [userId]);
 
   const handleChangeName = () => {
-    const next = window.prompt('Display name', userName);
+    const next = window.prompt('Display name', userName === 'Athlete' ? '' : userName);
     if (next === null) return;
-    const trimmed = next.trim();
-    if (trimmed) {
-      localStorage.setItem('userName', trimmed);
-    } else {
-      localStorage.removeItem('userName');
-    }
-    // Re-read on next render.
-    window.location.reload();
+    // Writes locally, queues the push, and returns the cleaned value. No
+    // reload: the greeting is state now.
+    setUserName(setDisplayName(next) || 'Athlete');
   };
 
   const handleDeleteRoutine = async (e, routineId) => {
@@ -116,28 +115,31 @@ export default function Dashboard() {
 
   return (
     <div className="page">
-      <div className="animated-bg" />
-      <div className="orb orb-1" />
-      <div className="orb orb-2" />
-
-      <div className="container" style={{ padding: '1.5rem', maxWidth: '1100px' }}>
+      <div className="container" style={{ maxWidth: '1100px' }}>
         {/* HEADER */}
         <header className="animate-fade-up" style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: '2rem'
+          gap: '12px', marginBottom: '1.5rem', flexWrap: 'wrap',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0 }}>
             <div className="avatar" style={{
-              background: 'linear-gradient(135deg, var(--primary), var(--accent))',
+              background: 'var(--grad-primary)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.2rem', fontWeight: 700, color: 'white',
+              fontSize: '1.25rem', fontWeight: 800, color: 'white',
             }}>
               {firstName[0]?.toUpperCase()}
             </div>
-            <div>
-              <h2 style={{ fontSize: '1.5rem' }}>Welcome, {firstName}!</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {loading ? 'Loading progress...' : `Level ${stats?.level || 1} · ${stats?.streak || 0} day streak`}
+            <div style={{ minWidth: 0 }}>
+              <p className="eyebrow" style={{ marginBottom: '2px' }}>
+                {new Date().toLocaleDateString(undefined, { weekday: 'long' })}
+              </p>
+              <h2 style={{
+                marginBottom: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                Hey, <span className="text-gradient">{firstName}</span>
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 0 }}>
+                {loading ? 'Loading progress…' : `Level ${stats?.level || 1} · ${stats?.streak || 0} day streak`}
               </p>
             </div>
           </div>
@@ -159,122 +161,115 @@ export default function Dashboard() {
         </div>
 
         {/* PROGRESS RING AND STATS */}
-        <div className="animate-fade-up delay-2" style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1rem', marginBottom: '1.5rem',
-        }}>
-          <div className="glass" style={{
+        <div className="grid-stats animate-fade-up delay-2" style={{ marginBottom: '1.5rem' }}>
+          <div className="glass stat-hero" style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center',
             justifyContent: 'center', gridRow: 'span 2',
           }}>
             <div className="countdown-container">
-              <svg width="130" height="130" className="progress-ring">
-                <circle className="progress-ring__circle-bg" cx="65" cy="65" r="52" strokeWidth="8" />
+              <svg width="130" height="130" className="progress-ring" aria-hidden="true">
+                <circle className="progress-ring__circle-bg" cx="65" cy="65" r="52" strokeWidth="9" />
                 <circle
                   className="progress-ring__circle"
-                  cx="65" cy="65" r="52" strokeWidth="8"
+                  cx="65" cy="65" r="52" strokeWidth="9"
                   stroke="url(#progressGradient)"
                   strokeDasharray={circumference}
                   strokeDashoffset={loading ? circumference : dashOffset}
                 />
                 <defs>
                   <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="var(--primary)" />
-                    <stop offset="100%" stopColor="var(--accent)" />
+                    <stop offset="0%" stopColor="#8479FF" />
+                    <stop offset="100%" stopColor="#0FB9A6" />
                   </linearGradient>
                 </defs>
               </svg>
-              <div className="countdown-text" style={{ fontSize: '1.1rem' }}>
-                {loading ? '...' : `${Math.round(weeklyProgress)}%`}
+              <div className="countdown-text" style={{ fontSize: '1.35rem' }}>
+                {loading ? '…' : `${Math.round(weeklyProgress)}%`}
               </div>
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Weekly Goal</p>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-              {loading ? '...' : `${Math.round(stats?.weeklyMinutes || 0)} / ${weeklyGoal} min`}
+            <p className="eyebrow" style={{ marginTop: '0.75rem' }}>Weekly Goal</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 0, fontWeight: 600 }}>
+              {loading ? '…' : `${Math.round(stats?.weeklyMinutes || 0)} / ${weeklyGoal} min`}
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginBottom: 0 }}>
+              {loading ? '' : 'last 7 days'}
             </p>
           </div>
 
-          <div className="glass stat-card stat-purple" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'rgba(108, 99, 255, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Zap size={22} color="var(--primary-light)" />
+          {[
+            { cls: 'stat-purple', icon: <Zap size={22} color="var(--primary-light)" />, tint: 'rgba(91, 75, 245, 0.18)',
+              value: loading ? '—' : (stats?.level || 1), label: 'Level' },
+            { cls: 'stat-pink', icon: <Flame size={22} color="var(--danger)" />, tint: 'rgba(244, 63, 94, 0.18)',
+              value: loading ? '—' : `${stats?.streak || 0}d`, label: 'Streak' },
+            { cls: 'stat-green', icon: <Activity size={22} color="var(--accent-light)" />, tint: 'rgba(15, 185, 166, 0.18)',
+              value: loading ? '—' : `${Math.round(stats?.totalMinutes || 0)}m`, label: 'Total Active' },
+            { cls: 'stat-orange', icon: <Calendar size={22} color="var(--warning)" />, tint: 'rgba(245, 158, 11, 0.18)',
+              value: loading ? '—' : (stats?.totalSessions || 0),
+              // "Sessions" counts finished workouts while "Total Active" counts
+              // every minute trained, so the two tiles disagree unless the
+              // partial ones are named.
+              label: !loading && stats?.incompleteSessions > 0
+                ? `Sessions · +${stats.incompleteSessions} partial`
+                : 'Sessions' },
+          ].map((tile) => (
+            <div key={tile.cls} className={`glass stat-card ${tile.cls}`} style={{
+              display: 'flex', alignItems: 'center', gap: '0.85rem',
+            }}>
+              <div style={{
+                width: 44, height: 44, flexShrink: 0, borderRadius: 'var(--radius-md)',
+                background: tile.tint, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {tile.icon}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className="stat-value">{tile.value}</div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', marginBottom: 0 }}>
+                  {tile.label}
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 style={{ fontSize: '1.4rem' }}>{loading ? '—' : stats?.level || 1}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Level</p>
-            </div>
-          </div>
-
-          <div className="glass stat-card stat-pink" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'rgba(255, 107, 157, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Flame size={22} color="var(--neon-pink)" />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '1.4rem' }}>{loading ? '—' : `${stats?.streak || 0}d`}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Streak</p>
-            </div>
-          </div>
-
-          <div className="glass stat-card stat-green" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'rgba(0, 212, 170, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Activity size={22} color="var(--accent)" />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '1.4rem' }}>{loading ? '—' : `${Math.round(stats?.totalMinutes || 0)}m`}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Total Active</p>
-            </div>
-          </div>
-
-          <div className="glass stat-card stat-orange" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'rgba(255, 140, 66, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Calendar size={22} color="var(--neon-orange)" />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '1.4rem' }}>{loading ? '—' : stats?.totalSessions || 0}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Sessions</p>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* CUSTOM ROUTINES SECTION */}
         <div className="animate-fade-up delay-3" style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1.25rem' }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            gap: '12px', marginBottom: '1rem', flexWrap: 'wrap',
+          }}>
+              <h3 style={{ marginBottom: 0 }}>
                 <Dumbbell size={20} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--primary-light)' }} />
                 Your Routines
               </h3>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button className="btn btn-ghost" onClick={() => navigate('/build')} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-                      <PlusCircle size={16} style={{ marginRight: '0.5rem' }} /> Create New
-                  </button>
-              </div>
+              <button className="btn btn-ghost" onClick={() => navigate('/build')}>
+                  <PlusCircle size={16} /> Create New
+              </button>
           </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+
+          <div className="grid-routines">
               {/* Default Quick Start */}
-              <div 
-                  className="glass-solid" 
-                  style={{ display: 'flex', flexDirection: 'column', gap: '16px', border: '1px solid rgba(255, 255, 255, 0.1)' }}
-              >
+              <div className="glass glass-topline" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
-                      <h4 style={{ color: 'var(--accent)', fontSize: '1.1rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <h4 style={{ fontSize: '1.05rem', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-light)' }}>
                         <Calendar size={18} /> {weeklyCalisthenicsPlan.title}
                       </h4>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.4rem' }}>
-                        {weeklyCalisthenicsPlan.equipment} · {weeklyCalisthenicsPlan.workoutTime}
-                      </p>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                        Today: <strong>{todayPlan.label}</strong> · {todayPlan.focus}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+                        <span className="pill">{weeklyCalisthenicsPlan.equipment}</span>
+                        <span className="pill">{weeklyCalisthenicsPlan.workoutTime}</span>
+                      </div>
+                      <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '0.35rem' }}>
+                        Today: <strong style={{ color: 'var(--text-primary)' }}>{todayPlan.label}</strong> · {todayPlan.focus}
                       </p>
                       {!todayPlan.isRestDay && progressionModifiers && Object.keys(progressionModifiers).length > 0 && (
-                        <p style={{ fontSize: '0.78rem', color: 'var(--accent)', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                          ⚡ Progressive overload modifiers applied
-                        </p>
+                        <span className="pill pill-live" style={{ marginBottom: '0.35rem' }}>
+                          ⚡ Overload applied
+                        </span>
                       )}
-                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '0.35rem' }}>
+                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '0.4rem', marginBottom: 0 }}>
                         {weeklyCalisthenicsPlan.goal}
                       </p>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
                     <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowPlanModal(true)}>
                       View Plan
                     </button>
@@ -284,31 +279,23 @@ export default function Dashboard() {
                       onClick={() => handleStartPlanDay(todayPlan)}
                       disabled={todayPlan.isRestDay}
                     >
-                      <Play size={18} /> {todayPlan.isRestDay ? 'Rest Day' : 'Start Today'}
+                      <Play size={18} /> {todayPlan.isRestDay ? 'Rest Day' : 'Start'}
                     </button>
                   </div>
               </div>
 
               {/* Custom Routines */}
               {!loading && customRoutines.map(routine => (
-                  <div 
-                      key={routine.id}
-                      className="glass-solid" 
-                      style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-                  >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                              <h4 style={{ fontSize: '1.1rem', marginBottom: '0.25rem' }}>{routine.name}</h4>
-                              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                {routine.exercises?.length || 0} exercises
-                              </p>
-                          </div>
+                  <div key={routine.id} className="glass" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div>
+                          <h4 style={{ fontSize: '1.05rem', marginBottom: '0.35rem' }}>{routine.name}</h4>
+                          <span className="pill">{routine.exercises?.length || 0} exercises</span>
                       </div>
-                      
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                              className="btn btn-primary" 
-                              style={{ flex: 1, padding: '0.5rem' }}
+
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
+                          <button
+                              className="btn btn-primary"
+                              style={{ flex: 1 }}
                               onClick={() => {
                                 const progressed = applyProgression(routine.exercises, progressionModifiers);
                                 navigate('/workout', { state: { routine: progressed, routineName: routine.name, routineSettings: routine.settings } });
@@ -316,19 +303,18 @@ export default function Dashboard() {
                           >
                               <Play size={16} /> Play
                           </button>
-                          <button 
-                              className="btn btn-secondary" 
-                              style={{ padding: '0.5rem' }}
+                          <button
+                              className="btn btn-secondary btn-icon"
                               onClick={() => navigate('/build', { state: { routine } })}
-                              title="Edit"
+                              aria-label={`Edit ${routine.name}`}
                           >
                               <Edit2 size={16} />
                           </button>
-                          <button 
-                              className="btn btn-danger" 
-                              style={{ padding: '0.5rem', background: 'rgba(255, 107, 107, 0.1)', color: 'var(--danger)' }}
+                          <button
+                              className="btn btn-icon"
+                              style={{ background: 'rgba(244, 63, 94, 0.14)', borderColor: 'rgba(244, 63, 94, 0.35)', color: 'var(--danger)' }}
                               onClick={(e) => handleDeleteRoutine(e, routine.id)}
-                              title="Delete"
+                              aria-label={`Delete ${routine.name}`}
                           >
                               <Trash2 size={16} />
                           </button>
@@ -339,34 +325,39 @@ export default function Dashboard() {
         </div>
 
         {/* CHART & STREAKS Row */}
-        <div className="animate-fade-up delay-4" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+        <div className="grid-analytics animate-fade-up delay-4" style={{ marginBottom: '2rem' }}>
             <div className="glass">
-                <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
-                <TrendingUp size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+                <h3 style={{ fontSize: '1.05rem', marginBottom: '1rem' }}>
+                <TrendingUp size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--primary-light)' }} />
                 Activity This Week
                 </h3>
-                <div style={{ height: '220px', minHeight: '220px', width: '100%' }}>
+                {/* Shorter on a phone, where 220px of chart plus axes crowds
+                    everything else off the first screen. */}
+                <div style={{ height: 'clamp(170px, 26vh, 220px)', width: '100%' }}>
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
+                    <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
                     <defs>
                         <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#8479FF" stopOpacity={0.55} />
+                        <stop offset="100%" stopColor="#5B4BF5" stopOpacity={0} />
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={12} />
-                    <YAxis stroke="var(--text-muted)" fontSize={12} />
-                    <Tooltip contentStyle={{ backgroundColor: 'var(--surface-1)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'var(--text-primary)' }} formatter={(value) => [`${value} min`, 'Active Time']} />
-                    <Area type="monotone" dataKey="minutes" stroke="var(--primary)" strokeWidth={3} fill="url(#chartGradient)" dot={{ r: 4, fill: 'var(--primary)', strokeWidth: 2, stroke: 'var(--bg-deep)' }} activeDot={{ r: 6, fill: 'var(--primary-light)' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="day" stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} axisLine={false} width={38} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'var(--surface-1)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '12px', color: 'var(--text-primary)' }}
+                      formatter={(value) => [`${value} min`, 'Active Time']}
+                    />
+                    <Area type="monotone" dataKey="minutes" stroke="#8479FF" strokeWidth={3} fill="url(#chartGradient)" dot={{ r: 3, fill: '#8479FF', strokeWidth: 2, stroke: 'var(--bg-deep)' }} activeDot={{ r: 6, fill: '#2DE0C8' }} />
                     </AreaChart>
                 </ResponsiveContainer>
                 </div>
             </div>
 
             <div className="glass">
-                <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-                <Flame size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+                <h3 style={{ fontSize: '1.05rem', marginBottom: '0.75rem' }}>
+                <Flame size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--danger)' }} />
                 Last 28 Days
                 </h3>
                 <div className="streak-grid">
@@ -379,18 +370,18 @@ export default function Dashboard() {
 
         {/* BADGES */}
         <div className="glass animate-fade-up delay-5" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '0.75rem' }}>
-            <Award size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+          <h3 style={{ fontSize: '1.05rem', marginBottom: '0.85rem' }}>
+            <Award size={18} style={{ verticalAlign: 'middle', marginRight: '0.5rem', color: 'var(--warning)' }} />
             Achievements
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '12px' }}>
+          <div className="grid-badges">
             {badges.map(badge => (
               <div key={badge.id} className={`badge-card ${badge.unlocked ? 'unlocked' : 'locked'}`}>
                 <div className="badge-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '32px', color: badge.unlocked ? 'var(--primary-light)' : 'var(--text-muted)' }}>
                   {BADGE_ICONS[badge.id] || <Award size={22} />}
                 </div>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{badge.name}</span>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>{badge.description}</span>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{badge.name}</span>
+                <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>{badge.description}</span>
               </div>
             ))}
           </div>
@@ -399,16 +390,37 @@ export default function Dashboard() {
       </div>
 
       {showPlanModal && (
-          <div style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)',
-              zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
-          }}>
-              <div className="glass animate-scale-in" style={{ width: '100%', maxWidth: '760px', maxHeight: '88vh', overflowY: 'auto', position: 'relative' }}>
-                  <button className="btn-icon" style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent' }} onClick={() => setShowPlanModal(false)}>
-                      <X size={24} />
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(3,6,14,0.86)',
+              backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+              zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 'max(12px, var(--safe-l)) 12px max(12px, var(--safe-b))',
+            }}
+            onClick={() => setShowPlanModal(false)}
+          >
+              {/* Tapping the sheet must not close it, only the backdrop. */}
+              <div
+                className="glass animate-scale-in"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: '760px',
+                  // dvh so the sheet is not taller than the visible viewport on
+                  // mobile Safari, which would hide its own scroll end.
+                  maxHeight: '86dvh', overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch', position: 'relative',
+                  paddingTop: '3.25rem',
+                }}
+              >
+                  <button
+                    className="btn btn-icon"
+                    style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', zIndex: 2 }}
+                    onClick={() => setShowPlanModal(false)}
+                    aria-label="Close plan"
+                  >
+                      <X size={20} />
                   </button>
-
-                  <h2 style={{ fontSize: '1.5rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h2 style={{ fontSize: 'clamp(1.25rem, 5vw, 1.5rem)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Calendar size={22} /> {weeklyCalisthenicsPlan.title}
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', marginBottom: '0.5rem' }}>
@@ -432,11 +444,14 @@ export default function Dashboard() {
                       const resolvedDay = resolveWeeklyPlanDay(day.id);
                       return (
                         <div key={day.id} className="glass-solid" style={{ padding: '1rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '0.6rem' }}>
-                            <div>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap',
+                          }}>
+                            <div style={{ minWidth: 0 }}>
                               <h3 style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{day.label} — {day.focus}</h3>
                               {day.repeatLabel && (
-                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{day.repeatLabel}</p>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 0 }}>{day.repeatLabel}</p>
                               )}
                             </div>
                             {!resolvedDay.isRestDay && (

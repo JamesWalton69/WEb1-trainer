@@ -1,74 +1,87 @@
-# FitTrainer 🚀 — Web AI Workout Companion
+# FitTrainer
 
-**FitTrainer** is an offline-first Progressive Web Application (PWA) that acts as your personal fitness coach directly in the browser.
+A self-hosted workout coach that runs as an installable web app. It takes you
+through a routine set by set, times your holds and rests, speaks the cues out
+loud, and keeps your history in a SQLite database on your own server.
 
-It runs **entirely on your device**. There is no account, no login, and no backend database. Your workout history never leaves your browser.
+No accounts, no login screen, no third-party backend. One shared password at the
+nginx layer is the whole access-control story.
 
-Through client-side computer vision (TensorFlow.js) and Web Speech APIs, FitTrainer tracks your reps, speaks advice, and lets you build custom routines.
+## How your data is stored
 
----
+Every workout is written to `localStorage` first and then pushed to a small Node
+API on your server, which stores it in SQLite. That ordering is deliberate: the
+app stays fully usable with the server down or the phone offline, and anything
+that failed to send is queued and replayed later.
 
-## 🔒 No Accounts, No Cloud
+Because the server holds the real copy, clearing your browser data no longer
+loses anything, and your phone and your laptop see the same history. Writes are
+row-level upserts guarded by a timestamp, so two devices used the same day
+cannot overwrite each other, and deleting a routine leaves a tombstone so an
+offline device cannot resurrect it.
 
-- **No sign-in.** Opening the app drops you straight onto the Dashboard.
-- **No user database.** Sessions, routines, and progression live in your browser's `localStorage`.
-- **No telemetry.** The only outbound request the app can make is to the Gemini API, and only if *you* choose to use the AI Coach with your own key.
-- **Clearing your browser data erases your history.** Nothing is recoverable from a server, because there is no server.
+See [SERVICES.md](./SERVICES.md) for exactly what is stored where.
 
----
+## Features
 
-## 🔥 Features
+1. **Guided sessions.** The workout engine walks each set with prep, tension,
+   reset and rest timers, a progress ring, and spoken cues through the browser's
+   `SpeechSynthesis` API.
+2. **Progressive overload.** Per-exercise rep and hold offsets that carry
+   forward, applied to the routine each time you run it.
+3. **Custom routines.** Build your own, or run the built-in weekly calisthenics
+   plan from `src/lib/workout-routine.json`.
+4. **History and charts.** Streak calendar, badges, and volume charts built from
+   your logged sessions.
+5. **Voice commands.** Say "pause", "play" or "stop" instead of touching a
+   sweaty phone, via the `SpeechRecognition` API. Optional, off until you press
+   the mic button — and worth knowing that Chrome implements this by sending the
+   audio to Google's servers, so leave it off if that bothers you.
+6. **Spotify mini-player.** An embedded playlist behind the music button. This
+   is the one thing in the app that loads anything from a third party, and only
+   after you tap it.
+7. **Installable PWA.** Service worker, offline shell, home-screen install.
+   Sync requests are deliberately never cached.
 
-1. **AI Posture Tracking & Auto Rep Counting** 📷
-   Using `@tensorflow-models/pose-detection` (MoveNet), the app tracks your key movement angles (e.g., knee hinge during squats, elbow depth during pushups). It only counts a repetition when it recognizes that you hit the correct biological angle!
-2. **Talkback Form Correction** 🗣️
-   Built with the browser's `SpeechSynthesis` framework. If you don't drop low enough during a squat, or if you break form, the AI will audibly coach you (e.g., *"Squat deeper!"* or *"Lower your chest!"*).
-3. **Voice Commands** 🎙️
-   Using the `SpeechRecognition` API, you never have to touch your mouse while sweating. Simply shout **"Pause"**, **"Play"**, or **"Stop"** across the room.
-5. **Spotify Music Embeds** 🎶
-   Launch your favorite workout playlist via an integrated Spotify floating mini-player accessible directly within the core Workout Engine.
-6. **Robust PWA Capabilities** 📱
-   Includes the comprehensive `vite-plugin-pwa`. Built with offline caching logic exceeding 5MB capabilities so all UI/UX components run fluidly regardless of internet connection.
-
----
-
-## 💻 Tech Stack
-
-- **Framework**: React 19 + Vite 8 + ESModules
-- **Storage**: Browser `localStorage` (no backend)
-- **Computer Vision Model**: TensorFlow.js (MoveNet Architecture)
-- **Charts / UI Vectors**: Recharts, Lucide-React
-- **PWA Service Worker**: VitePWA Wrapper
-
----
-
-## 🛠️ Running Locally
+## Running it locally
 
 ```bash
-cd E:\Coding\Projects\WEb1-trainer-main
 npm install
-npm run dev
+npm run fonts     # downloads the self-hosted Inter/Outfit files, once
+npm run dev       # http://localhost:5173
 ```
 
-Then open `http://localhost:5173/`.
-
-### Production build
+In a second terminal, start the API so sync works:
 
 ```bash
-npm run build
-npm run preview
+npm run server    # http://127.0.0.1:3001
 ```
 
-The production build lands in `dist/` as plain static files — HTML, JS, CSS, and a service worker. Any static web server can host it.
+Vite proxies `/api` to it, so the client talks to the same origin in development
+and in production. There is no base URL to configure and no CORS anywhere.
 
----
+Without the API running the app still works — it just keeps everything in
+`localStorage` and queues the pushes.
 
-## 🚢 Deploying to your own VPS
+```bash
+npm test          # 49 checks: the API, the client's sync rules, the pure logic
+npm run lint
+npm run build     # static files into dist/
+```
 
-See **[DEPLOY.md](./DEPLOY.md)** for the full self-hosting guide (nginx, HTTPS via Let's Encrypt, and a one-command deploy script).
+Node 22.13 or newer is required. The server uses Node's built-in `node:sqlite`,
+which needed an experimental flag before that version.
 
-The short version: `npm run build`, copy `dist/` to the server, serve it with nginx using an SPA fallback.
+## Tech
 
----
+React 19 and Vite 8 on the client, with Recharts and Lucide. On the server,
+`node:http` plus `node:sqlite` and **zero npm dependencies** — no Express, no
+native modules, nothing to compile on the VPS. Fonts are self-hosted, so a page
+load makes no outbound request at all.
 
+## Deploying
 
+[DEPLOY.md](./DEPLOY.md) is the full walkthrough for your own server: Node,
+nginx as reverse proxy, the systemd unit, HTTPS via Let's Encrypt, the shared
+password, and nightly SQLite backups. `deploy/docker-compose.yml` is there if
+you prefer containers.

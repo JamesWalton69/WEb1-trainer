@@ -20,10 +20,50 @@ Checked in this project directory:
 | `firebase` npm dependency | **removed** from `package.json` and `node_modules` |
 | `src/lib/firebase.js` | **deleted** |
 | `src/pages/Login.jsx` | **deleted** |
-| `src/lib/firestoreService.js` | **renamed** to `src/lib/localStore.js` (localStorage only) |
-| Firebase endpoints in `dist/` bundle | **absent** (verified by grep) |
+| `src/lib/firestoreService.js` | **renamed** to `src/lib/localStore.js`, now backed by the SQLite API |
+| Gemini / Firestore / TensorFlow calls in `src/` | **absent** (verified by grep over the source tree) |
 
 So there is nothing local to disconnect. The work is all account-side.
+
+### One thing that is not account-side: the Gemini key in your browser
+
+An earlier version of this app had a real Gemini integration — a "Google Gemini
+API Key" password field that stored what you typed under the `geminiApiKey`
+localStorage key and posted it to
+`generativelanguage.googleapis.com` from the browser. That code is gone from the
+source, but **the key itself is still in the localStorage of every browser you
+used it in**, and a key that has been sitting in client-side storage should be
+treated as exposed.
+
+Two minutes of work, worth doing:
+
+1. In each browser you used the app in: DevTools → Application → Local Storage →
+   delete the `geminiApiKey` entry.
+2. Revoke the key itself at [AI Studio](https://aistudio.google.com/app/apikey).
+   Deleting it locally does not stop anyone who already has it from spending your
+   quota.
+
+Nothing in the current app reads that key, so removing it breaks nothing.
+
+---
+
+## Where your history lives instead
+
+Workouts now go to SQLite on your own server, written through a small Node API,
+with `localStorage` in the browser as the write-ahead cache.
+[DEPLOY.md](./DEPLOY.md) sets that up; [SERVICES.md](./SERVICES.md) is the exact
+description of what is stored where.
+
+One gap to be aware of before you lock Firestore down: **nothing migrates
+Firestore documents into SQLite.** What the new server picks up is whatever is
+in the `localStorage` of the browser you open it with — that history is uploaded
+and merged on first load, not overwritten. So:
+
+- Open the newly deployed site once in each browser that has history in it,
+  **before** clearing any site data. That is what moves your workouts across.
+- History that only ever existed in Firestore, and never in a browser you still
+  have, will not appear. Export it (step 1 of Part 2 below) if you care about it;
+  the schema is different, so reimporting would be a hand-written script.
 
 ---
 
@@ -43,11 +83,14 @@ Option A is usually what you want. Option B if you also want the URL to stop ser
 
 ### 2. Remove the environment variables
 
-These are the Firebase and Gemini keys you pasted in earlier. They are no longer read by the code, but leaving live credentials sitting in a deployment config is needless exposure.
+If you set Firebase or Gemini keys in Vercel, they are no longer read by the
+code, and leaving live credentials in a deployment config is needless exposure.
 
-> Project → **Settings** → **Environment Variables** → remove `VITE_FIREBASE_*` and `VITE_GEMINI_API_KEY`
+> Project → **Settings** → **Environment Variables** → remove any `VITE_FIREBASE_*` and `VITE_GEMINI_API_KEY`
 
 Copy the values into your password manager first if you want them retrievable.
+Anything that was a `VITE_` variable was inlined into the public bundle, so treat
+those as already published.
 
 ### 3. Release the domain (only if reusing it on the VPS)
 
@@ -118,7 +161,12 @@ The Firebase web API key was shipped in your public bundle, so treat it as expos
 - **Restrict it** (safer, reversible): Google Cloud Console → **APIs & Services** → **Credentials** → select the browser key → under **Application restrictions** set **HTTP referrers** and remove your old Vercel domain, or under **API restrictions** limit it to nothing in use.
 - **Delete just that key**: also fine, and does not affect the project or data.
 
-Do the same for the **Gemini** key if you ever committed it or set it as a build variable — that one bills against your quota, so it matters more. Regenerate it in [AI Studio](https://aistudio.google.com/app/apikey) and keep the new one out of any `VITE_` variable.
+Do the same for the **Gemini** key — see the note near the top of this file. It
+was stored client-side and posted from the browser, so it should be treated as
+public regardless of whether you ever committed it. Revoke it in
+[AI Studio](https://aistudio.google.com/app/apikey) rather than merely
+restricting it, and keep any replacement out of a `VITE_` variable, since those
+are inlined into the public bundle.
 
 ### 5. Confirm you are not accruing cost
 
@@ -142,7 +190,11 @@ If you want the cloud version back:
 3. Reconnect Git in Vercel and restore the environment variables.
 4. In code: reinstate `src/lib/firebase.js` and `src/pages/Login.jsx`, re-add the `firebase` dependency, and revert `src/lib/localStore.js` to the dual-write `firestoreService.js`.
 
-Steps 1–3 are dashboard clicks. Step 4 is a code change, so commit the current state to Git before going further — that gives you a restore point.
+Steps 1–3 are dashboard clicks. Step 4 is a code change, so commit the current
+state to Git before going further — that gives you a restore point. Note that the
+self-hosted version is not a subset of the old one: the server-side sync,
+tombstoned deletes and `updated_at` conflict rules have no Firestore equivalent
+here, so a revert loses them rather than pausing them.
 
 ---
 
@@ -157,3 +209,10 @@ dig +short fit.example.com
 ```
 
 In the Firebase console, **Firestore → Usage** should flatten to zero reads within a day.
+
+And on the new box, the check that actually matters — the same history in two
+different browsers:
+
+```bash
+curl -s -u yourname https://YOUR.DOMAIN/api/state | head -c 200
+```

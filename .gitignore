@@ -34,3 +34,23 @@ lint_output.txt
 .vercel
 .firebase
 firebase-debug.log
+
+# Self-hosted webfont binaries — fetched with `npm run fonts`, not committed
+public/fonts/*.woff2
+
+# Local SQLite database + backups (server/data lives outside git in production)
+server/data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# The one Basic Auth password, mounted into the container by
+# deploy/docker-compose.yml. Bcrypt hash rather than plaintext, but it is still
+# the only thing guarding the database — keep it out of the repo.
+deploy/.htpasswd
+.htpasswd
+
+# Agent scratch
+.kilo/
+.claude/

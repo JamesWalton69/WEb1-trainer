@@ -1,26 +1,38 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { fileURLToPath } from 'node:url'
 
 // https://vite.dev/config/
 export default defineConfig({
   server: {
     fs: {
       allow: ['..']
+    },
+    // Dev talks to the API on the same origin, exactly as it does in
+    // production behind nginx. Keeping both same-origin means there is no CORS
+    // configuration anywhere, and no base URL to switch between environments.
+    // Start the API alongside vite with `npm run server`.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: false,
+      }
     }
   },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png', 'exercises/*.png'],
+      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'FitTrainer',
         short_name: 'FitTrainer',
-        description: 'Premium AI-powered workout companion.',
-        theme_color: '#0A1128',
-        background_color: '#060B18',
+        description: 'Self-hosted workout companion.',
+        // Both track --bg-deep in src/index.css. theme_color paints the Android
+        // status bar and the splash; if it drifts from the page background the
+        // installed app opens with a visible seam across the top.
+        theme_color: '#070B16',
+        background_color: '#070B16',
         display: 'standalone',
         orientation: 'portrait',
         icons: [
@@ -37,15 +49,18 @@ export default defineConfig({
         ]
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 5000000
+        maximumFileSizeToCacheInBytes: 5000000,
+        // The service worker must never answer for /api. Serving a cached
+        // workout history to the app would make a sync look successful when it
+        // was not, and could replay stale rows over newer ones.
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\//,
+            handler: 'NetworkOnly',
+          }
+        ]
       }
     })
-  ],
-  resolve: {
-    alias: {
-      // Stub out the optional MediaPipe backend; MoveNet runs on tfjs/webgpu.
-      // `__dirname` is unavailable in ESM, so derive the path from import.meta.
-      '@mediapipe/pose': fileURLToPath(new URL('./mock-mediapipe.js', import.meta.url))
-    }
-  }
+  ]
 })

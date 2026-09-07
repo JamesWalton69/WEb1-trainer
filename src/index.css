@@ -1,9 +1,11 @@
-/* ===== FitTrainer Core Design System — Premium UI ===== */
+/* ===== FitTrainer Core Design System ===== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+/* Self-hosted Inter + Outfit. No third-party font request. */
+@import url('./fonts.css');
 
 :root {
   /* Spacing Grid (8px Scale) */
+  --space-2xs: 4px;
   --space-xs: 8px;
   --space-sm: 16px;
   --space-md: 24px;
@@ -11,41 +13,63 @@
   --space-xl: 48px;
   --space-xxl: 64px;
 
-  /* Color Palette - Disciplined Slate/Indigo */
-  --bg-deep: #0B0F19;
-  --bg-main: #0F172A;
-  --surface-1: #1E293B;
-  --surface-2: #334155;
-  --surface-hover: #475569;
-  
-  --primary: #4F46E5;
-  --primary-light: #6366F1;
-  --primary-dark: #3730A3;
-  --primary-glow: rgba(79, 70, 229, 0.2);
+  /* Surfaces — deeper and cooler than before, so the accents can shout */
+  --bg-deep: #070B16;
+  --bg-main: #0C1222;
+  --surface-1: #151D31;
+  --surface-2: #1E2942;
+  --surface-3: #29375A;
+  --surface-hover: #38487045;
 
-  --accent: #0D9488;
-  --accent-light: #14B8A6;
-  --accent-glow: rgba(13, 148, 136, 0.15);
+  /* Brand */
+  --primary: #5B4BF5;
+  --primary-light: #8479FF;
+  --primary-dark: #3A2DBF;
+  --primary-glow: rgba(91, 75, 245, 0.35);
 
-  --text-primary: #F9FAFB;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
+  --accent: #0FB9A6;
+  --accent-light: #2DE0C8;
+  --accent-glow: rgba(15, 185, 166, 0.28);
 
-  /* Status Colors */
-  --success: #0D9488;
-  --warning: #D97706;
-  --danger: #E11D48;
+  --text-primary: #F4F7FF;
+  --text-secondary: #A5AFC9;
+  --text-muted: #6E7893;
 
-  /* Consistent Radii */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Status */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #F43F5E;
+  --danger-glow: rgba(244, 63, 94, 0.3);
+
+  /* Gradients — the main cure for "dull". Used on hero type, rings, bars. */
+  --grad-primary: linear-gradient(135deg, #8479FF 0%, #5B4BF5 55%, #0FB9A6 100%);
+  --grad-heat: linear-gradient(135deg, #F59E0B 0%, #F43F5E 100%);
+  --grad-cool: linear-gradient(135deg, #2DE0C8 0%, #3B82F6 100%);
+  --grad-surface: linear-gradient(160deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015));
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  /* Shadows — deeper, plus a coloured lift for interactive surfaces */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 10px 24px -12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 24px 56px -20px rgba(0, 0, 0, 0.85);
+  --shadow-glow: 0 12px 40px -16px var(--primary-glow);
+
+  /* Safe-area insets, resolved once. iOS reports 0 when there is no notch, so
+     these are safe to use unconditionally. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
+  /* Minimum comfortable tap target. Anything a thumb hits during a workout
+     is sized off this rather than off a font size. */
+  --tap: 44px;
 }
 
 /* ===== RESET & BASE ===== */
@@ -55,6 +79,12 @@
   padding: 0;
 }
 
+html {
+  /* iOS Safari bumps font size on rotate without this. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--bg-deep);
@@ -62,6 +92,24 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  /* Kills the grey flash on tap in mobile Safari/Chrome; every interactive
+     element here has its own :active state instead. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The dull-fix at the root: two fixed radial washes behind everything, so
+   scrolling reveals colour instead of flat #070B16. Fixed rather than absolute
+   so they cost nothing to scroll past. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% -8%, rgba(91, 75, 245, 0.22), transparent 45%),
+    radial-gradient(circle at 92% 8%, rgba(15, 185, 166, 0.15), transparent 42%),
+    radial-gradient(circle at 50% 108%, rgba(91, 75, 245, 0.12), transparent 55%);
 }
 
 /* ===== TYPOGRAPHY ===== */
@@ -69,53 +117,83 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Outfit', 'Inter', sans-serif;
   font-weight: 700;
   color: var(--text-primary);
-  line-height: 1.25;
-  letter-spacing: -0.015em;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
-h1 { font-size: 2.25rem; margin-bottom: var(--space-sm); }
-h2 { font-size: 1.75rem; margin-bottom: var(--space-xs); }
-h3 { font-size: 1.25rem; margin-bottom: var(--space-xs); }
+/* Fluid down to phone widths without a media query per step. */
+h1 { font-size: clamp(1.75rem, 5vw, 2.25rem); margin-bottom: var(--space-sm); }
+h2 { font-size: clamp(1.35rem, 4.2vw, 1.75rem); margin-bottom: var(--space-xs); }
+h3 { font-size: clamp(1.1rem, 3.4vw, 1.25rem); margin-bottom: var(--space-xs); }
 p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
+
+.text-gradient {
+  background: var(--grad-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 
 /* ===== LAYOUT SYSTEM ===== */
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: var(--space-md);
+  padding-left: max(var(--space-md), var(--safe-l));
+  padding-right: max(var(--space-md), var(--safe-r));
   width: 100%;
 }
 
 .page {
-  min-height: 100vh;
-  background-color: var(--bg-deep);
+  /* dvh, not vh: on mobile Safari 100vh is the *expanded* viewport, so a full
+     height page sits ~80px taller than the visible area and the bottom row
+     hides behind the URL bar. */
+  min-height: 100dvh;
+  background-color: transparent;
   display: flex;
   flex-direction: column;
 }
 
 .animated-bg, .orb {
-  display: none; /* Removed chaotic background visual noise */
+  display: none; /* superseded by body::before */
 }
 
 /* ===== PANEL / CARDS ===== */
 .glass {
+  position: relative;
   background: var(--surface-1);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
+  background-image: var(--grad-surface);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-lg);
   padding: var(--space-md);
   box-shadow: var(--shadow-md);
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.glass:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+/* Hover lift only where a real pointer exists. On a touchscreen :hover sticks
+   after a tap, which left cards translated upward until you tapped elsewhere. */
+@media (hover: hover) and (pointer: fine) {
+  .glass:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+  }
 }
 
 .glass-solid {
   background: var(--surface-1);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
+  background-image: var(--grad-surface);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-lg);
   padding: var(--space-md);
   box-shadow: var(--shadow-sm);
 }
@@ -123,124 +201,181 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
 .glass-accent {
   background: var(--surface-1);
   border: 1px solid var(--primary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: var(--space-md);
+  box-shadow: var(--shadow-glow);
 }
 
+/* A hairline of brand colour along the top edge of a card. */
+.glass-topline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--radius-lg);
+  right: var(--radius-lg);
+  height: 1px;
+  background: var(--grad-primary);
+  opacity: 0.7;
+}
 /* ===== BUTTONS ===== */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
-  padding: 10px 20px;
+  min-height: var(--tap);
+  padding: 11px 20px;
   border-radius: var(--radius-md);
   font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 0.875rem;
+  font-weight: 600;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.15s ease-in-out;
+  transition: transform 0.12s ease, background-color 0.15s ease,
+              box-shadow 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   border: 1px solid transparent;
   outline: none;
   text-decoration: none;
+  /* A long-press on a button used to select its label on mobile. */
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
 }
+
+.btn:focus-visible {
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Press feedback replaces hover on touch, where hover never fires. */
+.btn:not(:disabled):active { transform: scale(0.97); }
 
 .btn-primary {
-  background-color: var(--primary);
+  background: var(--grad-primary);
+  background-size: 160% 160%;
   color: white;
+  box-shadow: var(--shadow-glow);
 }
 
-.btn-primary:hover {
-  background-color: var(--primary-light);
-}
-
-.btn-primary:active {
-  background-color: var(--primary-dark);
+.btn-secondary {
+  background-color: var(--surface-2);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.09);
 }
 
 .btn-accent {
-  background-color: var(--accent);
-  color: white;
-}
-
-.btn-accent:hover {
-  background-color: var(--accent-light);
-}
-
-.btn-google {
-  background-color: white;
-  color: #1F2937;
-  border: 1px solid #D1D5DB;
-  font-weight: 500;
-}
-
-.btn-google:hover {
-  background-color: #F9FAFB;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent));
+  color: #04211E;
+  box-shadow: 0 12px 32px -18px var(--accent-glow);
 }
 
 .btn-ghost {
-  background-color: transparent;
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.13);
   color: var(--text-primary);
-}
-
-.btn-ghost:hover {
-  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .btn-danger {
-  background-color: var(--danger);
+  background: var(--grad-heat);
   color: white;
 }
 
-.btn-danger:hover {
-  opacity: 0.9;
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { background-position: 100% 0; box-shadow: 0 16px 44px -14px var(--primary-glow); }
+  .btn-secondary:hover { background-color: var(--surface-3); }
+  .btn-accent:hover { filter: brightness(1.08); }
+  .btn-ghost:hover { background-color: rgba(255, 255, 255, 0.1); }
+  .btn-danger:hover { filter: brightness(1.08); }
 }
 
 .btn-lg {
-  padding: 14px 28px;
+  min-height: 52px;
+  padding: 15px 28px;
   font-size: 1rem;
+  border-radius: var(--radius-lg);
 }
 
 .btn-icon {
-  width: 40px;
-  height: 40px;
+  width: var(--tap);
+  height: var(--tap);
+  min-height: var(--tap);
   padding: 0;
   border-radius: var(--radius-full);
-  background-color: var(--surface-2);
+  background-color: rgba(255, 255, 255, 0.07);
   color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-.btn-icon:hover {
-  background-color: var(--surface-hover);
-  transform: scale(1.05);
+@media (hover: hover) and (pointer: fine) {
+  .btn-icon:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    transform: scale(1.06);
+  }
 }
 
 /* ===== INPUTS & SELECTS ===== */
 .input, .input-field {
   width: 100%;
-  padding: 10px 14px;
-  background-color: var(--bg-deep);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  min-height: var(--tap);
+  padding: 11px 14px;
+  background-color: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: 'Inter', sans-serif;
-  font-size: 0.875rem;
+  /* 16px exactly: iOS Safari zooms the whole page when a focused field is
+     smaller than that, and never zooms back out. */
+  font-size: 16px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   outline: none;
 }
 
 .input:focus, .input-field:focus {
   border-color: var(--primary-light);
-  box-shadow: 0 0 0 2px var(--primary-glow);
+  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
-.input::placeholder {
+.input::placeholder { color: var(--text-muted); }
+
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-secondary) 50%),
+                    linear-gradient(135deg, var(--text-secondary) 50%, transparent 50%);
+  background-position: right 16px center, right 11px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+
+/* Chrome/Safari draw spinners that are unusable at thumb size and steal ~20px
+   of a narrow field. The numbers here are all typed or stepped by the +/− rows. */
+.input[type='number']::-webkit-outer-spin-button,
+.input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+
+/* The small caption above a field. A <label> is inline by default, so without
+   `display: block` it sat on the same line as the input inside a grid cell. */
+.field-label {
+  display: block;
+  margin-bottom: 4px;
   color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 /* ===== FORM GROUP & DIVIDERS ===== */
@@ -262,43 +397,65 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
   height: 1px;
   background-color: rgba(255, 255, 255, 0.08);
 }
-
 /* ===== STAT CARD ===== */
 .stat-card {
-  border-top: 4px solid var(--surface-2);
+  position: relative;
+  overflow: hidden;
+  border-top: 3px solid var(--surface-3);
 }
 
-.stat-card.stat-purple { border-top-color: var(--primary); }
-.stat-card.stat-green { border-top-color: var(--accent); }
-.stat-card.stat-pink { border-top-color: var(--danger); }
-.stat-card.stat-orange { border-top-color: var(--warning); }
+/* A soft wash of the tile's own colour, so five tiles no longer read as one
+   grey block. */
+.stat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: radial-gradient(circle at 0% 0%, var(--stat-tint, transparent), transparent 62%);
+}
+
+.stat-card.stat-purple { border-top-color: var(--primary); --stat-tint: rgba(91, 75, 245, 0.28); }
+.stat-card.stat-green  { border-top-color: var(--accent);  --stat-tint: rgba(15, 185, 166, 0.24); }
+.stat-card.stat-pink   { border-top-color: var(--danger);  --stat-tint: rgba(244, 63, 94, 0.24); }
+.stat-card.stat-orange { border-top-color: var(--warning); --stat-tint: rgba(245, 158, 11, 0.24); }
+
+/* Numbers on the tiles. tabular-nums so a counter ticking 9 → 10 does not
+   shuffle the label sideways. */
+.stat-value {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: clamp(1.35rem, 4.6vw, 1.6rem);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ===== BADGE CARD ===== */
 .badge-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm);
+  gap: var(--space-2xs);
+  padding: var(--space-sm) var(--space-xs);
   text-align: center;
   border-radius: var(--radius-md);
   background-color: var(--surface-1);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
-.badge-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.15);
+@media (hover: hover) and (pointer: fine) {
+  .badge-card:hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.18); }
 }
 
 .badge-card.unlocked {
-  border-color: rgba(79, 70, 229, 0.3);
-  background-color: rgba(79, 70, 229, 0.08);
+  border-color: rgba(91, 75, 245, 0.4);
+  background-image: linear-gradient(160deg, rgba(91, 75, 245, 0.2), rgba(15, 185, 166, 0.06));
+  box-shadow: 0 10px 30px -20px var(--primary-glow);
 }
 
 .badge-card.locked {
-  opacity: 0.35;
+  opacity: 0.32;
   filter: grayscale(1);
 }
 
@@ -308,19 +465,17 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
 }
 
 /* ===== PROGRESS RING ===== */
-.progress-ring {
-  transform: rotate(-90deg);
-}
+.progress-ring { transform: rotate(-90deg); }
 
 .progress-ring__circle-bg {
-  stroke: var(--surface-2);
+  stroke: rgba(255, 255, 255, 0.08);
   fill: none;
 }
 
 .progress-ring__circle {
   fill: none;
   stroke-linecap: round;
-  transition: stroke-dashoffset 0.30s ease;
+  transition: stroke-dashoffset 0.3s ease, stroke 0.6s ease;
 }
 
 /* ===== STREAK CALENDAR ===== */
@@ -332,24 +487,23 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
 
 .streak-cell {
   aspect-ratio: 1;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: transform 0.15s ease;
   cursor: default;
-  min-width: 16px;
+  min-width: 14px;
 }
 
-.streak-cell.empty { background-color: var(--surface-2); }
-.streak-cell.level-1 { background-color: rgba(79, 70, 229, 0.3); }
-.streak-cell.level-2 { background-color: rgba(79, 70, 229, 0.5); }
-.streak-cell.level-3 { background-color: rgba(79, 70, 229, 0.75); }
-.streak-cell.level-4 { 
-  background-color: var(--primary); 
-  box-shadow: 0 0 6px var(--primary-glow); 
+.streak-cell.empty { background-color: rgba(255, 255, 255, 0.06); }
+.streak-cell.level-1 { background-color: rgba(91, 75, 245, 0.35); }
+.streak-cell.level-2 { background-color: rgba(91, 75, 245, 0.55); }
+.streak-cell.level-3 { background-color: rgba(91, 75, 245, 0.8); }
+.streak-cell.level-4 {
+  background: var(--grad-primary);
+  box-shadow: 0 0 10px var(--primary-glow);
 }
 
-.streak-cell:hover {
-  transform: scale(1.15);
-  z-index: 1;
+@media (hover: hover) and (pointer: fine) {
+  .streak-cell:hover { transform: scale(1.18); z-index: 1; }
 }
 
 /* ===== COUNTDOWN RING ===== */
@@ -366,29 +520,44 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
   font-weight: 700;
   font-size: 1.75rem;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ===== QUOTE CARD ===== */
 .quote-card {
+  position: relative;
   padding: var(--space-sm) var(--space-md);
-  background-color: rgba(255, 255, 255, 0.02);
-  border-left: 3px solid var(--primary);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding-left: calc(var(--space-md) + 3px);
+  background: linear-gradient(100deg, rgba(91, 75, 245, 0.12), rgba(255, 255, 255, 0.02));
+  border-radius: var(--radius-md);
   font-style: italic;
   color: var(--text-secondary);
   font-size: 0.95rem;
   line-height: 1.6;
+  overflow: hidden;
+}
+
+/* The gradient stripe is a pseudo-element rather than `border-image` on the left
+   border: border-image suppresses border-radius, so the card rendered with four
+   square corners while every other card in the app was rounded. */
+.quote-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--grad-primary);
 }
 
 .quote-card .quote-author {
   display: block;
   margin-top: var(--space-xs);
   font-style: normal;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--primary-light);
   font-size: 0.8rem;
 }
-
 /* ===== ANIMATIONS ===== */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(16px); }
@@ -405,7 +574,7 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
   to { opacity: 1; transform: scale(1); }
 }
 
-.animate-fade-up { animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-fade-up { animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
 .animate-scale-in { animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
@@ -429,56 +598,446 @@ p { color: var(--text-secondary); margin-bottom: var(--space-sm); }
 
 /* ===== AVATAR ===== */
 .avatar {
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius-full);
-  border: 1.5px solid var(--primary-light);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
   object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-glow);
 }
 
 .avatar-lg {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: var(--radius-full);
   border: 2px solid var(--primary-light);
   object-fit: cover;
 }
+/* ===== WORKOUT ENGINE ===== */
+/* The phase colour is the screen. It used to be a 1px border on a dark card,
+   which read as "dark screen with a red outline" from two feet away — useless
+   as the peripheral signal it is meant to be. `position: fixed` rather than
+   100vh so the wash covers the whole viewport on mobile, where 100vh is taller
+   than what you can actually see. */
+.workout-shell {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+  background-color: var(--phase, var(--bg-deep));
+  /* Long enough to read as a wash changing, short enough that the cue still
+     lands with the beep. */
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-/* ===== WORKOUT ENGINE SPECIFIC ===== */
+/* Vignette over the flat colour: lifts the middle so white display type keeps
+   its contrast, darkens the edges so the colour does not vibrate. Its own
+   element rather than a gradient on the shell, because it animates. */
+.phase-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 85% 60% at 50% 40%, rgba(255, 255, 255, 0.16), transparent 70%),
+    radial-gradient(ellipse 120% 110% at 50% 50%, transparent 25%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+@keyframes phaseBreathe {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+/* Only during reps. If it breathed the whole time it would stop meaning
+   "you are working" and just be motion. */
+.workout-shell.is-active .phase-field {
+  animation: phaseBreathe 1.8s ease-in-out infinite;
+}
+
+/* Rep beat: one sweep of light across the screen per phase change. */
+@keyframes phaseFlash {
+  from { opacity: 0.5; }
+  to { opacity: 0; }
+}
+
+.phase-flash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.5), transparent 60%);
+  animation: phaseFlash 0.45s ease-out forwards;
+}
+/* The card is now a frame *inside* the colour, not the source of it. Nearly
+   transparent so the phase colour is the dominant thing on screen. */
+.workout-card {
+  position: relative;
+  z-index: 5;
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(20px, 5vw, 36px);
+  border-radius: var(--radius-xl);
+  background: rgba(6, 10, 22, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+}
+
 .workout-phase {
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  /* Ranges from ~2.6rem on a 360px phone to 4.5rem on a desktop, and can no
+     longer overflow the card on a long exercise name. */
+  font-size: clamp(2.4rem, 11vw, 4.5rem);
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
+  overflow-wrap: break-word;
+  hyphens: auto;
+  max-width: 100%;
 }
 
-.workout-bg {
-  background-color: var(--bg-deep);
+.workout-sub {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: clamp(0.9rem, 3.4vw, 1.05rem);
+  font-weight: 500;
+  text-align: center;
+  margin-top: var(--space-xs);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* The big pause target. Thumb-sized, high contrast against any phase colour. */
+.workout-primary-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1.5px solid rgba(255, 255, 255, 0.34);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.12s ease, background-color 0.15s ease;
+  touch-action: manipulation;
+}
+
+.workout-primary-btn:active { transform: scale(0.94); background: rgba(255, 255, 255, 0.26); }
+
+/* Top and bottom control rails, inset from the notch and the home indicator. */
+.workout-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 max(var(--space-sm), var(--safe-l)) 0 max(var(--space-sm), var(--safe-r));
+}
+
+.workout-rail-top {
+  top: calc(var(--safe-t) + 14px);
+  justify-content: space-between;
+}
+
+.workout-rail-bottom {
+  bottom: calc(var(--safe-b) + 14px);
+  justify-content: center;
+  flex-direction: column;
 }
 
 .exercise-img {
   border-radius: var(--radius-lg);
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.18);
   box-shadow: var(--shadow-lg);
 }
 
-/* ===== GOOGLE SIGN IN ICON ===== */
-.google-icon {
-  width: 18px;
-  height: 18px;
+/* ===== PILLS / CHIPS ===== */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pill-live {
+  background: rgba(15, 185, 166, 0.16);
+  border-color: rgba(15, 185, 166, 0.4);
+  color: var(--accent-light);
+}
+
+.pill-warn {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.38);
+  color: var(--warning);
 }
 
 /* ===== SCROLLBAR ===== */
-::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: var(--bg-deep); }
 ::-webkit-scrollbar-thumb {
-  background: var(--surface-2);
-  border-radius: 4px;
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--bg-deep);
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--surface-hover); }
-
 /* ===== RESPONSIVE ===== */
+
+/* Anything that has to reflow on a phone gets a class rather than an inline
+   style, because an inline style cannot be overridden by a media query — which
+   is why the dashboard's chart row stayed a 2fr/1fr grid at 360px and squeezed
+   the calendar into a 90px column. */
+
+/* Auto-fitting grids. The minmax floor is what breaks them onto one column. */
+.grid-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-sm);
+}
+
+.grid-routines {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: var(--space-sm);
+}
+
+.grid-badges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 12px;
+}
+
+/* Chart beside calendar on a wide screen, stacked on a narrow one. */
+.grid-analytics {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-md);
+}
+
+/* The builder's four timing fields. */
+.grid-settings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+/* The post-workout summary's four figures, and its three feedback buttons. */
+.grid-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.grid-feedback {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* One figure in the summary: icon, then value over caption. min-width: 0 on the
+   text column is what lets a long exercise name ellipsize instead of forcing
+   the grid track wider than the card. */
+.summary-figure {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.summary-figure > div {
+  min-width: 0;
+}
+
+.summary-value {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.05rem, 4.5vw, 1.3rem);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* Stacked icon over label, so the three read as one control group rather than
+   three sentences. */
+.feedback-btn {
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 6px;
+  min-height: 76px;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.feedback-btn.is-picked {
+  /* --fb is set per button from the option's colour. */
+  background-color: rgba(var(--fb-rgb, 91, 75, 245), 0.14);
+  border-color: var(--fb, var(--primary));
+  color: var(--fb, var(--primary-light));
+}
+
+/* One exercise row in the builder: handle, number, fields, delete. */
+.builder-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--space-sm);
+}
+
+.builder-fields {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+/* The reorder column. On a pointer device it is the drag handle; on touch it is
+   a stacked pair of arrow buttons, because HTML5 drag-and-drop does not fire
+   from touch events at all and the list was simply unorderable on a phone. */
+.builder-move {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.builder-move-btn {
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.builder-move-btn:disabled { opacity: 0.3; cursor: default; }
+.builder-move-btn:not(:disabled):active { transform: scale(0.94); }
+
+@media (hover: hover) and (pointer: fine) {
+  .builder-move-btn:not(:disabled):hover {
+    background-color: rgba(255, 255, 255, 0.13);
+    color: var(--text-primary);
+  }
+}
+
+/* The drag handle is only a handle where a mouse exists. */
+.builder-handle {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  cursor: grab;
+}
+.builder-handle:active { cursor: grabbing; }
+
+@media (max-width: 900px) {
+  .grid-analytics { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 768px) {
   .container { padding: var(--space-sm); }
   .glass, .glass-solid { padding: var(--space-sm); }
+  .grid-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-badges { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+  /* Two rows of two fields, with the name across the top. Four number inputs
+     side by side at 360px gave each about 50px, which cannot hold "0.4". */
+  .builder-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .builder-fields > :first-child { grid-column: 1 / -1; }
+  /* The drag handle is a mouse affordance; on touch the list reorders by the
+     arrow buttons instead, so the handle only wastes width. */
+  .builder-row { gap: 8px; }
 }
+
+@media (max-width: 480px) {
+  .grid-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The weekly ring is the one tile that must not be half-width. */
+  .grid-stats > .stat-hero { grid-column: 1 / -1; grid-row: auto; }
+  /* Two figures side by side leaves "Last Exercise" about 70px; one per row
+     keeps the value legible. The feedback buttons stay three across — they are
+     icon-plus-two-words and they are a single choice. */
+  .grid-summary { grid-template-columns: minmax(0, 1fr); }
+  h1 { margin-bottom: var(--space-xs); }
+}
+
+/* Utility: hide on touch / hide on desktop, for the few controls that only
+   make sense on one. */
+@media (hover: none) and (pointer: coarse) {
+  .only-pointer { display: none !important; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .only-touch { display: none !important; }
+}
+
+/* Landscape phones during a workout: there is no vertical room for the ring,
+   the phase word and the button, so drop the card chrome and shrink the type. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .workout-card {
+    padding: 12px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .workout-phase { font-size: clamp(1.8rem, 7vh, 2.6rem); }
+  .workout-primary-btn { width: 58px; height: 58px; }
+}
+
+/* ===== ACCESSIBILITY ===== */
+/* Honour the OS setting. The workout screen's pulse and flash are the loudest
+   motion in the app and the most likely to bother someone. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .delay-1, .delay-2, .delay-3, .delay-4, .delay-5 { opacity: 1; }
+  .workout-shell.is-active .phase-field { animation: none; opacity: 0.85; }
+}
+
+/* Visible focus for keyboard users on every interactive element, not just .btn. */
+:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+

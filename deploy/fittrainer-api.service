@@ -1,0 +1,72 @@
+# fittrainer-api.service — the SQLite API behind nginx.
+#
+#   sudo cp deploy/fittrainer-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fittrainer-api
+#   systemctl status fittrainer-api
+#
+# Adjust User, WorkingDirectory and ExecStart if you did not follow the paths
+# in DEPLOY.md. `command -v node` tells you what to put in ExecStart.
+
+[Unit]
+Description=FitTrainer API (node:sqlite)
+Documentation=file:///srv/fittrainer/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fittrainer
+Group=fittrainer
+WorkingDirectory=/srv/fittrainer
+
+# HOST stays on loopback: the API has no auth of its own, nginx supplies the
+# password. Binding this to 0.0.0.0 publishes a writable database — the server
+# refuses to start that way unless you also set FITTRAINER_TOKEN.
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3001
+
+# StateDirectory creates and chowns /var/lib/fittrainer on first start, so the
+# database lives outside the git checkout and survives a redeploy.
+StateDirectory=fittrainer
+Environment=FITTRAINER_DB=/var/lib/fittrainer/fittrainer.sqlite
+
+# node:sqlite is still marked experimental, so Node prints a warning on every
+# start. Silencing that one class keeps journalctl readable without hiding real
+# warnings. Node 22.13+ is required either way — see server/db.mjs.
+Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning
+
+ExecStart=/usr/bin/node /srv/fittrainer/server/index.mjs
+
+Restart=always
+RestartSec=2
+# SIGTERM lets index.mjs close the WAL cleanly; give it room before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fittrainer-api
+
+# ===== hardening =====
+# The service only ever needs to write its own database directory.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# NOT MemoryDenyWriteExecute=yes — V8's JIT needs writable-executable pages
+# and the service will crash on start with it enabled.
+
+[Install]
+WantedBy=multi-user.target

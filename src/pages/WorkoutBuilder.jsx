@@ -1,21 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Save, Plus, Trash2, GripVertical, RotateCcw, Wand2 } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, GripVertical, RotateCcw, Wand2,
+         ChevronUp, ChevronDown } from 'lucide-react';
 import { saveCustomWorkout, LOCAL_USER_ID } from '../lib/localStore';
 
+// Spelled the way src/lib/workout-routine.json spells them. Progression keys are
+// normalized (see lib/exerciseKey.js) so "Pushups" and "Push-ups" would share a
+// row either way, but matching the plan keeps the two lists reading alike.
 const PRESET_EXERCISES = [
-  "Pushups", "Incline Pushups", "Decline Pushups", "Diamond Pushups",
-  "Jump Squats", "Bodyweight Squats", "Lunges", "Bulgarian Split Squats",
-  "Glute Bridges", "Hip Thrusts", "Superman", "Plank",
-  "Mountain Climbers", "Burpees", "Crunches", "Leg Raises",
-  "Calf Raises", "Wall Sit", "Tricep Dips", "Jumping Jacks",
+  "Push-ups", "Incline push-ups", "Decline push-ups", "Diamond push-ups",
+  "Pike push-ups", "Pull-ups", "Backpack rows", "Chair dips",
+  "Backpack bicep curls", "Backpack squats", "Jump squats", "Reverse lunges",
+  "Bulgarian split squats", "Backpack Romanian deadlifts", "Glute bridges",
+  "Single-leg calf raises", "Wall sit", "Plank", "Side plank",
+  "Leg raises", "Reverse crunches", "Bird dogs", "Dead bugs",
+  "Mountain climbers", "Burpees", "Jumping jacks",
 ];
 
 const DEFAULT_EXERCISES = [
-  { name: "Incline Pushups", reps: 10, tension: 2, reset: 0.4 },
-  { name: "Jump Squats", reps: 17, tension: 2, reset: 0.4 },
-  { name: "Glute Bridges", reps: 15, tension: 3, reset: 0.4 },
-  { name: "Superman", reps: 11, tension: 3.5, reset: 0.6 },
+  { name: "Incline push-ups", reps: 10, tension: 2, reset: 0.4 },
+  { name: "Jump squats", reps: 17, tension: 2, reset: 0.4 },
+  { name: "Glute bridges", reps: 15, tension: 3, reset: 0.4 },
+  { name: "Leg raises", reps: 11, tension: 3.5, reset: 0.6 },
   { name: "Plank", reps: 1, tension: 45, reset: 10 },
 ];
 
@@ -74,31 +80,31 @@ export default function WorkoutBuilder() {
 
       if (isCore) {
           generated = [
-              { name: "Crunches", reps: 20, tension: 1, reset: 0.5 },
-              { name: "Leg Raises", reps: 15, tension: 2, reset: 0.5 },
+              { name: "Reverse crunches", reps: 20, tension: 1, reset: 0.5 },
+              { name: "Leg raises", reps: 15, tension: 2, reset: 0.5 },
               { name: "Plank", reps: 1, tension: 60, reset: 5 },
-              { name: "Mountain Climbers", reps: 30, tension: 0.5, reset: 0.2 },
+              { name: "Mountain climbers", reps: 30, tension: 0.5, reset: 0.2 },
           ];
       } else if (isLegs) {
           generated = [
-              { name: "Bodyweight Squats", reps: 20, tension: 2, reset: 0.5 },
-              { name: "Lunges", reps: 24, tension: 2, reset: 0.5 },
-              { name: "Glute Bridges", reps: 15, tension: 3, reset: 0.5 },
-              { name: "Wall Sit", reps: 1, tension: 45, reset: 5 },
+              { name: "Backpack squats", reps: 20, tension: 2, reset: 0.5 },
+              { name: "Reverse lunges", reps: 24, tension: 2, reset: 0.5 },
+              { name: "Glute bridges", reps: 15, tension: 3, reset: 0.5 },
+              { name: "Wall sit", reps: 1, tension: 45, reset: 5 },
           ];
       } else if (isUpper) {
           generated = [
-              { name: "Pushups", reps: 15, tension: 2, reset: 0.5 },
-              { name: "Diamond Pushups", reps: 10, tension: 2, reset: 0.5 },
-              { name: "Tricep Dips", reps: 15, tension: 2, reset: 0.5 },
-              { name: "Superman", reps: 15, tension: 3, reset: 0.5 },
+              { name: "Push-ups", reps: 15, tension: 2, reset: 0.5 },
+              { name: "Diamond push-ups", reps: 10, tension: 2, reset: 0.5 },
+              { name: "Chair dips", reps: 15, tension: 2, reset: 0.5 },
+              { name: "Backpack rows", reps: 15, tension: 3, reset: 0.5 },
           ];
       } else if (isCardio) {
           generated = [
               { name: "Burpees", reps: 15, tension: 1.5, reset: 0.5 },
-              { name: "Jumping Jacks", reps: 40, tension: 1, reset: 0.2 },
-              { name: "Jump Squats", reps: 20, tension: 1.5, reset: 0.3 },
-              { name: "Mountain Climbers", reps: 40, tension: 0.5, reset: 0.2 },
+              { name: "Jumping jacks", reps: 40, tension: 1, reset: 0.2 },
+              { name: "Jump squats", reps: 20, tension: 1.5, reset: 0.3 },
+              { name: "Mountain climbers", reps: 40, tension: 0.5, reset: 0.2 },
           ];
           setSettings(prev => ({ ...prev, restBetweenEx: 15, sets: 4 })); // intense settings!
       } else {
@@ -142,52 +148,75 @@ export default function WorkoutBuilder() {
   const handleDragOver = (e) => e.preventDefault();
   const handleDrop = (targetIdx) => {
     if (dragIdx === null || dragIdx === targetIdx) return;
-    const items = [...exercises];
-    const [moved] = items.splice(dragIdx, 1);
-    items.splice(targetIdx, 0, moved);
-    setExercises(items);
+    moveExercise(dragIdx, targetIdx);
     setDragIdx(null);
   };
 
+  // The one reorder primitive. Drag-and-drop calls it with a drop target; the
+  // arrow buttons call it with ±1. HTML5 drag events never fire from a touch, so
+  // without the buttons the list could not be reordered on a phone at all.
+  const moveExercise = (from, to) => {
+    if (to < 0 || to >= exercises.length || from === to) return;
+    const items = [...exercises];
+    const [moved] = items.splice(from, 1);
+    items.splice(to, 0, moved);
+    setExercises(items);
+  };
+
   return (
-    <div className="page" style={{ paddingBottom: '64px' }}>
-      <div className="container animate-fade-up" style={{ maxWidth: '750px', padding: '24px' }}>
+    <div className="page">
+      <div className="container animate-fade-up" style={{ maxWidth: '750px' }}>
         {/* Header */}
-        <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button className="btn btn-icon" onClick={() => navigate(-1)}>
+        <header style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '12px', flexWrap: 'wrap', marginBottom: '24px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <button className="btn btn-icon" onClick={() => navigate(-1)} aria-label="Go back">
                   <ArrowLeft size={20} />
               </button>
-              <div>
-                  <h2>{editingRoutine ? 'Edit Routine' : 'Workout Builder'}</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                      Drag to reorder · Edit global timings
+              <div style={{ minWidth: 0 }}>
+                  <h2 style={{ marginBottom: 2 }}>{editingRoutine ? 'Edit Routine' : 'Workout Builder'}</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: 0 }}>
+                      {/* The instruction differs by input device, so each half is
+                          shown only where it is true. */}
+                      <span className="only-pointer">Drag to reorder</span>
+                      <span className="only-touch">Use the arrows to reorder</span>
+                      {' · Edit global timings'}
                   </p>
               </div>
           </div>
-          <button className="btn btn-accent" onClick={() => setShowSmartGen(!showSmartGen)}>
-              <Wand2 size={18} style={{ marginRight: '0.5rem' }} /> Smart Gen
+          <button className="btn btn-accent" onClick={() => setShowSmartGen(!showSmartGen)}
+                  aria-expanded={showSmartGen}>
+              <Wand2 size={18} /> Smart Gen
           </button>
         </header>
 
         {/* Smart Generator Dropdown */}
         {showSmartGen && (
-            <div className="glass-solid animate-scale-in" style={{ padding: '24px', marginBottom: '32px', border: '1px solid var(--accent)' }}>
-                <h4 style={{ color: 'var(--accent)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="glass-solid animate-scale-in" style={{
+              marginBottom: '32px', border: '1px solid var(--accent)',
+            }}>
+                <h4 style={{ color: 'var(--accent-light)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Wand2 size={16} /> Smart Generation Engine
                 </h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                     Describe your perfect workout, and I'll build the exercise list and configure the optimal rest times.
                 </p>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <input 
-                        className="input" 
+                {/* Wraps to two rows on a narrow phone rather than crushing the
+                    field to nothing beside the button. */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                        className="input"
                         value={smartPrompt}
                         onChange={(e) => setSmartPrompt(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSmartGenerate(); }}
                         placeholder="e.g. 'A quick 10 min brutal core workout'"
-                        style={{ flex: 1, padding: '0.75rem' }}
+                        aria-label="Describe your workout"
+                        style={{ flex: '1 1 200px', minWidth: 0 }}
                     />
-                    <button className="btn btn-accent" onClick={handleSmartGenerate}>
+                    <button className="btn btn-accent" onClick={handleSmartGenerate}
+                            style={{ flex: '0 0 auto' }}>
                         Generate
                     </button>
                 </div>
@@ -196,52 +225,42 @@ export default function WorkoutBuilder() {
 
         {/* Routine Name Input */}
         <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Routine Name
-            </label>
-            <input 
-                type="text" 
+            <label className="field-label" htmlFor="routine-name">Routine Name</label>
+            <input
+                id="routine-name"
+                type="text"
                 value={routineName}
                 onChange={(e) => setRoutineName(e.target.value)}
                 className="input"
-                style={{ fontSize: '1.25rem', fontWeight: '600', padding: '1rem' }}
+                style={{ fontSize: 'clamp(1rem, 4vw, 1.2rem)', fontWeight: 600, minHeight: '54px' }}
                 placeholder="e.g. Morning Hiit"
             />
         </div>
 
-        {/* Global Settings */}
-        <div className="glass" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem', padding: '1rem' }}>
-            <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sets</label>
-                <input 
-                    type="number" className="input" value={settings.sets} min={1}
-                    onChange={(e) => updateSetting('sets', e.target.value)}
-                />
-            </div>
-            <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rest (Ex)</label>
-                <input 
-                    title="Rest between exercises (sec)"
-                    type="number" className="input" value={settings.restBetweenEx} min={0}
-                    onChange={(e) => updateSetting('restBetweenEx', e.target.value)}
-                />
-            </div>
-            <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Rest (Set)</label>
-                <input 
-                    title="Rest between sets (sec)"
-                    type="number" className="input" value={settings.restBetweenSet} min={0}
-                    onChange={(e) => updateSetting('restBetweenSet', e.target.value)}
-                />
-            </div>
-            <div>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Prep Time</label>
-                <input 
-                    title="Initial prep time countdown (sec)"
-                    type="number" className="input" value={settings.prepTime} min={0}
-                    onChange={(e) => updateSetting('prepTime', e.target.value)}
-                />
-            </div>
+        {/* Global Settings — a named grid, so 768px can drop it to two columns.
+            As an inline repeat(4, 1fr) it stayed four columns at 360px and each
+            field was about 60px wide. */}
+        <div className="glass grid-settings" style={{ marginBottom: '2rem' }}>
+            {[
+              { key: 'sets', label: 'Sets', title: 'Sets per exercise', min: 1 },
+              { key: 'restBetweenEx', label: 'Rest (Ex)', title: 'Rest between exercises (sec)', min: 0 },
+              { key: 'restBetweenSet', label: 'Rest (Set)', title: 'Rest between sets (sec)', min: 0 },
+              { key: 'prepTime', label: 'Prep Time', title: 'Initial prep time countdown (sec)', min: 0 },
+            ].map((f) => (
+              <div key={f.key}>
+                  <label className="field-label" htmlFor={`set-${f.key}`}>{f.label}</label>
+                  <input
+                      id={`set-${f.key}`}
+                      title={f.title}
+                      type="number"
+                      inputMode="numeric"
+                      className="input"
+                      value={settings[f.key]}
+                      min={f.min}
+                      onChange={(e) => updateSetting(f.key, e.target.value)}
+                  />
+              </div>
+            ))}
         </div>
 
         {/* Exercise List */}
@@ -253,30 +272,47 @@ export default function WorkoutBuilder() {
               onDragStart={() => handleDragStart(i)}
               onDragOver={handleDragOver}
               onDrop={() => handleDrop(i)}
-              className="glass-solid"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
-                cursor: 'grab', opacity: dragIdx === i ? 0.5 : 1,
-                transition: 'opacity 0.2s', padding: '1rem'
-              }}
+              onDragEnd={() => setDragIdx(null)}
+              className="glass-solid builder-row"
+              style={{ opacity: dragIdx === i ? 0.5 : 1, transition: 'opacity 0.2s' }}
             >
-              <GripVertical size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+              {/* Two reorder affordances for two input devices; the CSS shows
+                  exactly one. Both drive moveExercise. */}
+              <GripVertical size={18} className="builder-handle only-pointer" aria-hidden="true" />
+              <div className="builder-move only-touch">
+                <button
+                  type="button" className="builder-move-btn"
+                  onClick={() => moveExercise(i, i - 1)}
+                  disabled={i === 0}
+                  aria-label={`Move ${ex.name} up`}
+                >
+                  <ChevronUp size={15} />
+                </button>
+                <button
+                  type="button" className="builder-move-btn"
+                  onClick={() => moveExercise(i, i + 1)}
+                  disabled={i === exercises.length - 1}
+                  aria-label={`Move ${ex.name} down`}
+                >
+                  <ChevronDown size={15} />
+                </button>
+              </div>
 
               <div style={{
-                width: 28, height: 28, borderRadius: 'var(--radius-full)',
-                background: 'var(--primary)', color: 'white',
+                width: 26, height: 26, borderRadius: 'var(--radius-full)',
+                background: 'var(--grad-primary)', color: 'white',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.75rem', fontWeight: 700, flexShrink: 0,
+                fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
               }}>
                 {i + 1}
               </div>
 
-              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '0.5rem', alignItems: 'center' }}>
+              <div className="builder-fields">
                 <select
                   value={ex.name}
                   onChange={(e) => updateExercise(i, 'name', e.target.value)}
                   className="input"
-                  style={{ padding: '0.5rem', fontSize: '0.85rem' }}
+                  aria-label={`Exercise ${i + 1}`}
                 >
                   {PRESET_EXERCISES.map(name => (
                     <option key={name} value={name}>{name}</option>
@@ -285,54 +321,58 @@ export default function WorkoutBuilder() {
                       <option key={ex.name} value={ex.name}>{ex.name}</option>
                   )}
                 </select>
-                <div>
-                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Reps</label>
-                  <input
-                    type="number" value={ex.reps} min={1}
-                    onChange={(e) => updateExercise(i, 'reps', e.target.value)}
-                    className="input" style={{ padding: '0.4rem', fontSize: '0.85rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Hold (s)</label>
-                  <input
-                    title="Time tension on eccentric phase"
-                    type="number" value={ex.tension} min={0.5} step={0.5}
-                    onChange={(e) => updateExercise(i, 'tension', e.target.value)}
-                    className="input" style={{ padding: '0.4rem', fontSize: '0.85rem' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Reset (s)</label>
-                  <input
-                    title="Reset time between reps"
-                    type="number" value={ex.reset} min={0.2} step={0.1}
-                    onChange={(e) => updateExercise(i, 'reset', e.target.value)}
-                    className="input" style={{ padding: '0.4rem', fontSize: '0.85rem' }}
-                  />
-                </div>
+                {[
+                  { field: 'reps',    label: 'Reps',      title: 'Repetitions', min: 1,   step: 1 },
+                  { field: 'tension', label: 'Hold (s)',  title: 'Time under tension on the eccentric phase', min: 0.5, step: 0.5 },
+                  { field: 'reset',   label: 'Reset (s)', title: 'Reset time between reps', min: 0.2, step: 0.1 },
+                ].map((f) => (
+                  <div key={f.field}>
+                    <label className="field-label" htmlFor={`ex-${i}-${f.field}`}>{f.label}</label>
+                    <input
+                      id={`ex-${i}-${f.field}`}
+                      title={f.title}
+                      type="number"
+                      // decimal, not numeric: tension and reset are fractional,
+                      // and a numeric keypad on iOS has no decimal point.
+                      inputMode="decimal"
+                      value={ex[f.field]}
+                      min={f.min}
+                      step={f.step}
+                      onChange={(e) => updateExercise(i, f.field, e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                ))}
               </div>
 
               <button
+                className="btn btn-icon"
                 onClick={() => removeExercise(i)}
-                style={{
-                  background: 'none', border: 'none', color: 'var(--danger)',
-                  cursor: 'pointer', padding: '0.25rem', flexShrink: 0,
-                }}
+                aria-label={`Remove ${ex.name}`}
+                style={{ flexShrink: 0, color: 'var(--danger)' }}
               >
                 <Trash2 size={18} />
               </button>
             </div>
           ))}
+
+          {exercises.length === 0 && (
+            <p style={{
+              textAlign: 'center', color: 'var(--text-muted)',
+              fontSize: '0.88rem', padding: '1.5rem 0', marginBottom: 0,
+            }}>
+              No exercises yet — add one, load the default set, or use Smart Gen.
+            </p>
+          )}
         </div>
 
         {/* Add + Reset Buttons */}
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-          <button className="btn btn-ghost" onClick={addExercise} style={{ flex: 1 }}>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-ghost" onClick={addExercise} style={{ flex: '1 1 160px' }}>
             <Plus size={18} /> Add Exercise
           </button>
           {exercises.length === 0 && (
-              <button className="btn btn-ghost" onClick={resetToDefault}>
+              <button className="btn btn-ghost" onClick={resetToDefault} style={{ flex: '0 1 auto' }}>
                 <RotateCcw size={18} /> Default
               </button>
           )}
@@ -350,8 +390,10 @@ export default function WorkoutBuilder() {
         </button>
 
         {saveMsg && (
-          <p className="animate-fade-in" style={{
-            textAlign: 'center', color: saveMsg.includes('❌') ? 'var(--danger)' : 'var(--accent)', marginTop: '0.75rem',
+          /* role=status so the outcome is announced, not just coloured. */
+          <p className="animate-fade-in" role="status" style={{
+            textAlign: 'center', marginTop: '0.75rem', marginBottom: 0,
+            color: saveMsg.includes('❌') ? 'var(--danger)' : 'var(--accent-light)',
           }}>
             {saveMsg}
           </p>
