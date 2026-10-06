@@ -19,8 +19,25 @@ import { dirname } from 'node:path';
 // `CREATE TABLE IF NOT EXISTS` block below only ever runs on an empty database —
 // on an existing one it is a silent no-op, so a new column added there alone
 // would never appear and every query touching it would fail at runtime.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
+// One row per frozen date rather than a JSON array under a profile key, for the
+// same reason progression is one row per exercise: two devices freezing
+// *different* days must both survive. A whole-blob last-write-wins would let the
+// second sync silently unfreeze the first device's day and break a streak the
+// user paid for.
+//
+// Declared above SCHEMA because SCHEMA interpolates it, and a `const` read
+// before its initializer is a TDZ ReferenceError, not undefined.
+const FREEZE_DDL = `
+  CREATE TABLE IF NOT EXISTS freezes (
+    date       TEXT PRIMARY KEY,
+    updated_at TEXT NOT NULL
+  );
+`;
+
+// The *current* full shape, used for a fresh database. An existing one is
+// brought up to date by the MIGRATIONS delta instead — see addColumnIfMissing.
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id             TEXT PRIMARY KEY,
@@ -32,6 +49,7 @@ const SCHEMA = `
     last_exercise  TEXT,
     feedback       TEXT,
     routine_name   TEXT,
+    exercises      TEXT,
     updated_at     TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions (date DESC);
@@ -41,6 +59,7 @@ const SCHEMA = `
     name       TEXT NOT NULL,
     exercises  TEXT NOT NULL,
     settings   TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'routine',
     updated_at TEXT NOT NULL,
     deleted    INTEGER NOT NULL DEFAULT 0
   );
@@ -49,6 +68,7 @@ const SCHEMA = `
     exercise   TEXT PRIMARY KEY,
     reps       INTEGER NOT NULL DEFAULT 0,
     tension    REAL NOT NULL DEFAULT 0,
+    tier       INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
   );
 
@@ -57,6 +77,8 @@ const SCHEMA = `
     value      TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  ${FREEZE_DDL}
 `;
 
 /**
@@ -67,10 +89,35 @@ const SCHEMA = `
  * runs inside a transaction with the version bump, and it must not assume any
  * data is present. Use `ALTER TABLE ... ADD COLUMN`, which SQLite supports, and
  * give the column a default so existing rows stay valid.
+ *
+ * A fresh database runs *every* migration in order, so entry 1 also has to be a
+ * no-op against the tables SCHEMA just created with those columns already in
+ * them. That is what the existence check inside addColumnIfMissing is for.
  */
 const MIGRATIONS = [
   (db) => db.exec(SCHEMA),
+
+  // v1 → v2: per-exercise detail on sessions, routine kind (so templates ride
+  // the existing sync path), progression tier, and streak freezes.
+  (db) => {
+    addColumnIfMissing(db, 'sessions', 'exercises', 'TEXT');
+    addColumnIfMissing(db, 'routines', 'kind', "TEXT NOT NULL DEFAULT 'routine'");
+    addColumnIfMissing(db, 'progression', 'tier', 'INTEGER NOT NULL DEFAULT 0');
+    db.exec(FREEZE_DDL);
+  },
 ];
+
+// `ALTER TABLE ADD COLUMN` throws "duplicate column name" if it is already
+// there, and a migration must be safe to run against a database that SCHEMA
+// built whole. PRAGMA table_info does not take a bound parameter for the table
+// name, so the name is interpolated — it comes from the literals above, never
+// from a request.
+function addColumnIfMissing(db, table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (cols.some((c) => c.name === column)) return false;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  return true;
+}
 
 function migrate(db) {
   const current = db.prepare('PRAGMA user_version').get().user_version ?? 0;
@@ -126,10 +173,15 @@ const nowIso = () => new Date().toISOString();
 // `WHERE excluded.updated_at >= sessions.updated_at` is the last-write-wins
 // guard. Re-posting an identical session is a no-op, which is what lets the
 // client retry a failed push without creating duplicates.
+//
+// `feedback` and `exercises` use COALESCE rather than a straight assignment:
+// PostWorkout writes the same row a second time to attach the user's
+// easy/right/hard answer, and a write that does not carry those fields must not
+// erase the ones the first write put there.
 const UPSERT_SESSION = `
   INSERT INTO sessions
-    (id, date, timestamp, status, active_minutes, pauses, last_exercise, feedback, routine_name, updated_at)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, date, timestamp, status, active_minutes, pauses, last_exercise, feedback, routine_name, exercises, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     date           = excluded.date,
     timestamp      = excluded.timestamp,
@@ -139,9 +191,37 @@ const UPSERT_SESSION = `
     last_exercise  = excluded.last_exercise,
     feedback       = COALESCE(excluded.feedback, sessions.feedback),
     routine_name   = excluded.routine_name,
+    exercises      = COALESCE(excluded.exercises, sessions.exercises),
     updated_at     = excluded.updated_at
   WHERE excluded.updated_at >= sessions.updated_at
 `;
+
+// Per-exercise detail is untrusted client JSON that lands in a TEXT column, so
+// it gets shaped and bounded here rather than at read time. A routine with 200
+// exercises is already absurd; the cap exists so one malformed row cannot push a
+// session past MAX_BODY on every future sync of the whole history.
+const MAX_EXERCISE_ROWS = 200;
+const MAX_EXERCISE_FIELD = 200;
+
+function normalizeExercises(value) {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const rows = value.slice(0, MAX_EXERCISE_ROWS).map((e) => {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    return {
+      name: String(e.name ?? '').slice(0, MAX_EXERCISE_FIELD),
+      key: String(e.key ?? '').slice(0, MAX_EXERCISE_FIELD),
+      sets: Math.trunc(num(e.sets)),
+      reps: Math.trunc(num(e.reps)),
+      tension: num(e.tension),
+      volume: num(e.volume),
+      bestHold: num(e.bestHold),
+      isHold: e.isHold ? 1 : 0,
+    };
+  }).filter((e) => e && e.name);
+  if (!rows.length) return null;
+  return JSON.stringify(rows);
+}
 
 export function upsertSession(db, s) {
   if (!s || typeof s.id !== 'string' || s.id.length === 0) {
@@ -157,6 +237,7 @@ export function upsertSession(db, s) {
     s.last_exercise == null ? null : String(s.last_exercise).slice(0, 200),
     ['easy', 'right', 'hard'].includes(s.feedback) ? s.feedback : null,
     s.routine_name == null ? null : String(s.routine_name).slice(0, 200),
+    normalizeExercises(s.exercises),
     String(s.updated_at ?? nowIso()),
   );
 }
@@ -165,7 +246,7 @@ export function listSessions(db, limit = 500) {
   return db
     .prepare('SELECT * FROM sessions ORDER BY timestamp DESC LIMIT ?')
     .all(Math.min(Math.max(Math.trunc(limit) || 500, 1), 5000))
-    .map((r) => ({ ...r }));
+    .map((r) => ({ ...r, exercises: safeParse(r.exercises, null) }));
 }
 
 export function deleteSession(db, id) {
@@ -181,13 +262,19 @@ export class HttpError extends Error {
 
 // ===== ROUTINES =====
 
+// `kind` lets the template library ride the routine sync path unchanged —
+// same upsert, same tombstones, same merge rule — instead of needing a parallel
+// table, route and outbox branch that would all have to agree with this one.
+const ROUTINE_KINDS = new Set(['routine', 'template']);
+
 const UPSERT_ROUTINE = `
-  INSERT INTO routines (id, name, exercises, settings, updated_at, deleted)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO routines (id, name, exercises, settings, kind, updated_at, deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     name       = excluded.name,
     exercises  = excluded.exercises,
     settings   = excluded.settings,
+    kind       = excluded.kind,
     updated_at = excluded.updated_at,
     deleted    = excluded.deleted
   WHERE excluded.updated_at >= routines.updated_at
@@ -205,20 +292,28 @@ export function upsertRoutine(db, r) {
     String(r.name ?? 'My Routine').slice(0, 200),
     JSON.stringify(r.exercises),
     JSON.stringify(r.settings ?? {}),
+    // An unknown kind falls back rather than 400s: a client one version ahead
+    // would otherwise wedge the whole sync batch on a field the server has not
+    // learned yet, and the row is still perfectly usable as a routine.
+    ROUTINE_KINDS.has(r.kind) ? r.kind : 'routine',
     String(r.updatedAt ?? r.updated_at ?? nowIso()),
     r.deleted ? 1 : 0,
   );
 }
 
-export function listRoutines(db, { includeDeleted = false } = {}) {
-  const sql = includeDeleted
-    ? 'SELECT * FROM routines ORDER BY updated_at DESC'
-    : 'SELECT * FROM routines WHERE deleted = 0 ORDER BY updated_at DESC';
-  return db.prepare(sql).all().map((r) => ({
+export function listRoutines(db, { includeDeleted = false, kind = null } = {}) {
+  const where = [];
+  if (!includeDeleted) where.push('deleted = 0');
+  if (kind) where.push('kind = ?');
+  const sql = `SELECT * FROM routines${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC`;
+  const stmt = db.prepare(sql);
+  const rows = kind ? stmt.all(kind) : stmt.all();
+  return rows.map((r) => ({
     id: r.id,
     name: r.name,
     exercises: safeParse(r.exercises, []),
     settings: safeParse(r.settings, {}),
+    kind: ROUTINE_KINDS.has(r.kind) ? r.kind : 'routine',
     updatedAt: r.updated_at,
     ...(r.deleted ? { deleted: true } : {}),
   }));
@@ -248,11 +343,12 @@ function safeParse(text, fallback) {
 // that only adjusted "Pushups" cannot overwrite the desktop's "Jump Squats".
 
 const UPSERT_PROGRESSION = `
-  INSERT INTO progression (exercise, reps, tension, updated_at)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO progression (exercise, reps, tension, tier, updated_at)
+  VALUES (?, ?, ?, ?, ?)
   ON CONFLICT(exercise) DO UPDATE SET
     reps       = excluded.reps,
     tension    = excluded.tension,
+    tier       = excluded.tier,
     updated_at = excluded.updated_at
   WHERE excluded.updated_at >= progression.updated_at
 `;
@@ -268,6 +364,10 @@ export function mergeProgression(db, modifiers, updatedAt = nowIso()) {
       exercise.slice(0, 200),
       Math.trunc(Number(mod.reps)) || 0,
       Number(mod.tension) || 0,
+      // tier is a position on a progression ladder, so it is bounded and
+      // integral; anything unparseable means "has not moved", not 0-from-scratch
+      // overwriting a real rung.
+      Number.isFinite(Number(mod.tier)) ? Math.max(0, Math.trunc(Number(mod.tier))) : 0,
       updatedAt,
     );
   }
@@ -276,9 +376,46 @@ export function mergeProgression(db, modifiers, updatedAt = nowIso()) {
 export function getProgression(db) {
   const out = {};
   for (const row of db.prepare('SELECT * FROM progression').all()) {
-    out[row.exercise] = { reps: row.reps, tension: row.tension };
+    out[row.exercise] = { reps: row.reps, tension: row.tension, tier: row.tier };
   }
   return out;
+}
+
+// ===== STREAK FREEZES =====
+//
+// A freeze is "this missed day should not break my streak". Stored per date so
+// two devices freezing different days merge instead of clobbering.
+
+const UPSERT_FREEZE = `
+  INSERT INTO freezes (date, updated_at)
+  VALUES (?, ?)
+  ON CONFLICT(date) DO UPDATE SET updated_at = excluded.updated_at
+  WHERE excluded.updated_at >= freezes.updated_at
+`;
+
+export function mergeFreezes(db, dates, updatedAt = nowIso()) {
+  if (!Array.isArray(dates)) {
+    throw new HttpError(400, 'freezes must be an array of YYYY-MM-DD dates');
+  }
+  const stmt = db.prepare(UPSERT_FREEZE);
+  let added = 0;
+  for (const raw of dates) {
+    const date = String(raw ?? '').slice(0, 10);
+    // Only a plain local date is a valid key. Accepting anything else would let
+    // a typo'd row silently sit in the table and never match a streak walk,
+    // which looks exactly like a freeze that did not work.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    stmt.run(date, updatedAt);
+    added++;
+  }
+  return added;
+}
+
+export function listFreezes(db) {
+  return db
+    .prepare('SELECT date, updated_at FROM freezes ORDER BY date DESC')
+    .all()
+    .map((r) => ({ date: r.date, updated_at: r.updated_at }));
 }
 
 // ===== PROFILE (small key/value bag: display name, preferences) =====
@@ -320,9 +457,11 @@ export function readState(db, sessionLimit) {
     // sync from, and a client that cannot see the deletion keeps showing a
     // routine it still holds locally — and pushes it back on the next sync.
     // GET /api/routines stays clean for anything that just wants the live list.
+    // Templates come along too; the client splits them by `kind`.
     routines: listRoutines(db, { includeDeleted: true }),
     progression: getProgression(db),
     profile: getProfile(db),
+    freezes: listFreezes(db),
   };
 }
 

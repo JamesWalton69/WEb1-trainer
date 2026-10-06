@@ -31,6 +31,8 @@ import {
   tombstoneRoutine,
   mergeProgression,
   getProgression,
+  mergeFreezes,
+  listFreezes,
   setProfileValues,
   getProfile,
   HttpError,
@@ -222,7 +224,7 @@ async function route(req, res, url) {
   if (method === 'POST' && resource === 'sync') {
     const body = await readBody(req, res);
     const applied = inTransaction(() => {
-      const counts = { sessions: 0, routines: 0 };
+      const counts = { sessions: 0, routines: 0, freezes: 0 };
       for (const s of asArray(body.sessions)) {
         upsertSession(db, s);
         counts.sessions++;
@@ -233,6 +235,7 @@ async function route(req, res, url) {
       }
       if (body.progression) mergeProgression(db, body.progression);
       if (body.profile) setProfileValues(db, body.profile);
+      if (body.freezes) counts.freezes = mergeFreezes(db, asArray(body.freezes));
       return counts;
     });
     return send(res, 200, { applied, ...readState(db, Number(body.limit) || 500) });
@@ -256,7 +259,15 @@ async function route(req, res, url) {
   }
 
   if (resource === 'routines') {
-    if (method === 'GET') return send(res, 200, { routines: listRoutines(db) });
+    // ?kind=template narrows to the template library; with no parameter the
+    // caller gets both kinds, which is what a client rebuilding its local copy
+    // wants.
+    if (method === 'GET') {
+      const kind = url.searchParams.get('kind');
+      return send(res, 200, {
+        routines: listRoutines(db, kind ? { kind } : {}),
+      });
+    }
     if (method === 'PUT' && id) {
       const body = await readBody(req, res);
       upsertRoutine(db, { ...body, id });
