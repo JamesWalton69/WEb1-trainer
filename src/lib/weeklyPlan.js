@@ -2,6 +2,13 @@
 
 import workoutRoutine from './workout-routine.json';
 import { normalizeExerciseKey } from './exerciseKey.js';
+import {
+  FAMILY_LADDERS,
+  familyOf,
+  familyModifier,
+  getVariation,
+  repForVariation,
+} from './progressionLadder.js';
 
 // Mapping day numbers to IDs and labels
 const dayIdMap = {
@@ -178,33 +185,18 @@ export const weeklyCalisthenicsPlan = {
   workoutTime: workoutRoutine.overview?.goal ? '~30-40 min' : '',
   restGuidelines: workoutRoutine.overview?.notes || [],
   days: parsedDays,
-  progressionRules: [
-    {
-      exercise: 'Push-ups',
-      when: 'When you can comfortably perform maximum reps across all sets',
-      moveTo: 'Regular → slow/deficit → feet elevated → weighted backpack.',
-    },
-    {
-      exercise: 'Backpack rows',
-      when: 'When you can comfortably perform maximum reps across all sets',
-      moveTo: 'Increase backpack weight.',
-    },
-    {
-      exercise: 'Squats',
-      when: 'When you can comfortably perform maximum reps across all sets',
-      moveTo: 'Increase backpack weight → harder unilateral variations.',
-    },
-    {
-      exercise: 'Pike push-ups',
-      when: 'When you can comfortably perform maximum reps across all sets',
-      moveTo: 'Increase range of motion → elevate feet → progress toward wall-assisted handstand work.',
-    },
-    {
-      exercise: 'Pull-ups',
-      when: 'When you can perform ~8–10+ clean reps in the first set',
-      moveTo: 'Increase total clean repetitions. Eventually add load.'
-    }
-  ]
+  // The "Progression Rules" panel in the plan modal. Generated from the same
+  // ladders the brain uses, so the advice shown always matches what the app
+  // actually does: hit the top of the current range, and the exercise moves
+  // up to the next variation.
+  progressionRules: Object.entries(FAMILY_LADDERS).map(([, ladder]) => {
+    const last = ladder.tiers[ladder.tiers.length - 1];
+    return {
+      exercise: ladder.tiers[0].name,
+      when: `When you complete ${last.max} clean reps on all sets`,
+      moveTo: ladder.tiers.slice(1).map((t) => t.name).join(' → '),
+    };
+  }),
 };
 
 export function resolveWeeklyPlanDay(dayId) {
@@ -212,17 +204,34 @@ export function resolveWeeklyPlanDay(dayId) {
   return byId[dayId] || byId.monday;
 }
 
-// Applies user progression modifiers to dynamic exercise reps and static hold
-// durations.
+// Applies user progression to an executable routine.
 //
-// Modifiers are keyed canonically (exerciseKey.js), which is what lets a plan
-// day's "Push-ups" and a custom routine's "Pushups" draw on the same offset.
-// The floors here must match MIN_REPS / MIN_HOLD in localStore.js: this decides
-// what the user actually performs, and that decides when to stop easing off.
+// Exercises that belong to a ladder family (progressionLadder.js) are resolved
+// to their current variation: the tier selects the variation and the rep
+// offset walks inside that variation's range. Exercises with no ladder keep
+// the old behavior — a plain offset on top of the base reps — so custom
+// routines with unlisted movements still respond to feedback.
 export function applyProgression(workout, modifiers) {
   if (!modifiers || Object.keys(modifiers).length === 0) return workout;
   return workout.map(ex => {
-    const mod = modifiers[normalizeExerciseKey(ex.name)] || {};
+    const key = normalizeExerciseKey(ex.name);
+    const family = familyOf(key);
+
+    if (family) {
+      const mod = familyModifier(modifiers, family) || {};
+      const variation = getVariation(family, mod.tier);
+      // Dynamic reps: start at the variation's floor and let the offset walk
+      // up to its ceiling. Static holds keep their own floor.
+      if (ex.reps > 1) {
+        return { ...ex, name: variation.name, reps: repForVariation(family, mod.tier, mod.reps) };
+      }
+      if (ex.reps === 1 && ex.tension > 2) {
+        return { ...ex, name: variation.name, tension: Math.max(5, ex.tension + (mod.tension || 0)) };
+      }
+      return { ...ex, name: variation.name };
+    }
+
+    const mod = modifiers[key] || {};
     let newReps = ex.reps;
     let newTension = ex.tension;
 

@@ -38,6 +38,8 @@ globalThis.fetch = () => Promise.reject(new Error('test-lib must not make reques
 const { getPhaseColor, PHASE_COLORS, phaseRgb, phaseAlpha, phaseVars, isPhaseActive } =
   await import(lib('phaseColor.js'));
 const { normalizeExerciseKey, normalizeProgressionMap } = await import(lib('exerciseKey.js'));
+const { FAMILY_LADDERS, familyOf, clampTier, getVariation, repForVariation } =
+  await import(lib('progressionLadder.js'));
 const { computeStats, computeBadges, buildChartData, buildStreakCalendar } =
   await import(lib('localStore.js'));
 
@@ -219,6 +221,75 @@ check('normalizing a progression map keeps one row per exercise', () => {
   });
   assert.deepEqual(Object.keys(folded).sort(), ['jumpsquat', 'pushup']);
   assert.equal(folded.jumpsquat.reps, -2);
+});
+
+// ===== progression ladders =====
+
+check('every ladder variation maps back to its own family', () => {
+  // The session log carries the variation's name ("Decline push-ups"), so the
+  // brain must be able to find the ladder from any tier's name — otherwise the
+  // first level-up would orphan the exercise from further progression.
+  for (const [family, ladder] of Object.entries(FAMILY_LADDERS)) {
+    for (const tier of ladder.tiers) {
+      assert.equal(familyOf(tier.name), family, `${tier.name} should belong to ${family}`);
+    }
+  }
+});
+
+check('ladders are well-formed', () => {
+  for (const [family, ladder] of Object.entries(FAMILY_LADDERS)) {
+    assert.ok(ladder.tiers.length >= 1, `${family} needs at least one variation`);
+    assert.ok(Number.isInteger(ladder.step) && ladder.step >= 1, `${family} step must be a positive integer`);
+    const names = ladder.tiers.map((t) => t.name);
+    assert.equal(new Set(names).size, names.length, `${family} variation names must be unique`);
+    for (const t of ladder.tiers) {
+      assert.ok(Number.isInteger(t.min) && Number.isInteger(t.max), `${family}/${t.name} range must be integers`);
+      assert.ok(t.min >= 1, `${family}/${t.name} min must be at least 1`);
+      assert.ok(t.min <= t.max, `${family}/${t.name} min must not exceed max`);
+    }
+  }
+});
+
+check('family aliases fold the common spellings together', () => {
+  assert.equal(familyOf('Push-ups'), 'push');
+  assert.equal(familyOf('Pushups'), 'push');
+  assert.equal(familyOf('Diamond push-ups'), 'diamond');
+  assert.equal(familyOf('Pike push-ups'), 'pike');
+  assert.equal(familyOf('Chair dips'), 'dip');
+  assert.equal(familyOf('Backpack rows'), 'row');
+  assert.equal(familyOf('Pull-ups'), 'pull');
+  assert.equal(familyOf('Chin-ups'), 'pull');
+  assert.equal(familyOf('Deep squats'), 'squat');
+  assert.equal(familyOf('Deep pause squats'), 'squat');
+  assert.equal(familyOf('Bulgarian split squats'), 'bss');
+  assert.equal(familyOf('Glute bridges'), 'bridge');
+  assert.equal(familyOf('Reverse crunches'), 'crunch');
+  assert.equal(familyOf('Prone cobra'), 'cobra');
+});
+
+check('exercises with no ladder resolve to null', () => {
+  for (const name of ['Plank', 'Burpees', 'Jump squats', 'Mountain climbers',
+                      'Reverse lunges', 'Wall sit', 'Bird dogs', 'Dead bugs']) {
+    assert.equal(familyOf(name), null, `${name} should have no ladder`);
+  }
+});
+
+check('rep offsets are clamped inside the current variation range', () => {
+  assert.equal(repForVariation('push', 0, 0), 8);
+  assert.equal(repForVariation('push', 0, 99), 12, 'cap at the ceiling');
+  assert.equal(repForVariation('push', 0, -9), 8, 'floor at the variation minimum');
+  assert.equal(repForVariation('pull', 0, 2), 6);
+  assert.equal(repForVariation('pull', 0, 3), 6, 'pull-ups cap at 6');
+  assert.equal(repForVariation('pull', 3, 0), 3);
+  assert.equal(repForVariation('bogus', 0, 0), null);
+});
+
+check('tier indices are clamped into the ladder', () => {
+  assert.equal(clampTier('push', -3), 0);
+  assert.equal(clampTier('push', 0), 0);
+  assert.equal(clampTier('push', 99), 3);
+  assert.equal(clampTier('bogus', 2), 0);
+  assert.equal(getVariation('push', 3).name, 'One-arm assisted push-ups');
 });
 
 // ===== stats =====

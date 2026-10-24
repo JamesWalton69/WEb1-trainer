@@ -247,10 +247,10 @@ async function run() {
     await settle();
     const merged = await getUserProgression(USER);
     // Keys are canonical on the way in, so both devices' rows survive under the
-    // folded spelling.
+    // folded spelling. The server now normalizes tier as well, so rows carry it.
     assert.deepEqual(merged, {
-      pushup: { reps: 4, tension: 0 },
-      jumpsquat: { reps: -2, tension: 0 },
+      pushup: { reps: 4, tension: 0, tier: 0 },
+      jumpsquat: { reps: -2, tension: 0, tier: 0 },
     });
   });
 
@@ -265,50 +265,84 @@ async function run() {
     assert.equal(merged.pushup.reps, 6, 'the hyphenated name must land on the same row');
     assert.equal(Object.keys(merged).filter((k) => k.startsWith('pushup')).length, 1);
 
-    // And applyProgression must find it from either spelling.
-    assert.equal(applyProgression([{ name: 'Pushups', reps: 10, tension: 2 }], merged)[0].reps, 16);
-    assert.equal(applyProgression([{ name: 'Push-ups', reps: 10, tension: 2 }], merged)[0].reps, 16);
-    assert.equal(applyProgression([{ name: 'PUSH UPS', reps: 10, tension: 2 }], merged)[0].reps, 16);
+    // applyProgression finds it from either spelling, then resolves the family
+    // ladder: push-ups live on the push ladder, whose first variation is
+    // weighted push-ups 8-12. Offset 6 from a floor of 8 lands at the ceiling
+    // of 12 — not at 16, which the old system would have produced.
+    const applied = applyProgression([{ name: 'Pushups', reps: 10, tension: 2 }], merged);
+    assert.equal(applied[0].name, 'Weighted push-ups (backpack)');
+    assert.equal(applied[0].reps, 12);
+    assert.equal(applyProgression([{ name: 'Push-ups', reps: 10, tension: 2 }], merged)[0].reps, 12);
+    assert.equal(applyProgression([{ name: 'PUSH UPS', reps: 10, tension: 2 }], merged)[0].reps, 12);
   });
 
-  await check('"too hard" eases off but stops at the floor', async () => {
-    // The floor has to be tested against what the user actually performed, not
-    // against the base reps. This once added the stored offset a second time, so
-    // 3 reps with a -2 offset was checked as 3 + (-2) - 2 = -1 < 1 → refuse,
-    // while 1 rep with a -6 offset read as 1 + (-6) - 2 and the offset kept
-    // running away below the floor.
-    //
+  await check('"too easy" climbs to the ceiling, then levels the exercise up', async () => {
     // Offline on purpose: getUserProgression lets server rows win, and the push
     // from the previous step is still in flight, so leaving the network in would
     // make each read a race against it. The arithmetic is the subject here.
     store = new Map();
     offline = true;
     try {
-      // A 5-rep exercise with no history: two rounds of "too hard" reach 1 rep.
       const routine = (reps, tension = 2) => [{ name: 'Chair dips', reps, tension }];
-      await updateUserProgression(USER, routine(5), 'hard');
-      assert.equal((await getUserProgression(USER)).chairdip.reps, -2);
+      const mod = async () => (await getUserProgression(USER)).dip;
 
-      await updateUserProgression(USER, routine(3), 'hard');
-      assert.equal((await getUserProgression(USER)).chairdip.reps, -4, 'should reach the floor exactly');
+      // Chair dips live on the dip ladder, tier 0, 10-15 reps, step 2.
+      await updateUserProgression(USER, routine(10), 'easy');
+      assert.equal((await mod()).reps, 2);
+      await updateUserProgression(USER, routine(12), 'easy');
+      assert.equal((await mod()).reps, 4);
+      await updateUserProgression(USER, routine(14), 'easy');
+      assert.equal((await mod()).reps, 5, 'cap at the variation ceiling');
 
-      // At 1 rep there is nowhere left to go.
-      await updateUserProgression(USER, routine(1), 'hard');
-      assert.equal((await getUserProgression(USER)).chairdip.reps, -4, 'must not go below MIN_REPS');
+      // Still "too easy" at the ceiling advances the tier and resets the offset.
+      const result = await updateUserProgression(USER, routine(15), 'easy');
+      assert.equal((await mod()).tier, 1);
+      assert.equal((await mod()).reps, 0);
+      assert.deepEqual(result.advanced, ['Slow-eccentric chair dips (3s down)']);
 
-      // "Too easy" has no ceiling, and must survive the round trip through
-      // storage rather than being recomputed from the base each time.
-      await updateUserProgression(USER, routine(1), 'easy');
-      assert.equal((await getUserProgression(USER)).chairdip.reps, -2);
-
-      // Static holds use their own floor of 5 seconds.
+      // The plan now renders the harder variation at its own floor.
+      const applied = applyProgression(routine(10), await getUserProgression(USER));
+      assert.equal(applied[0].name, 'Slow-eccentric chair dips (3s down)');
+      assert.equal(applied[0].reps, 8);
+    } finally {
+      offline = false;
       store = new Map();
+    }
+  });
+
+  await check('"too hard" eases off, then steps down a variation at the floor', async () => {
+    store = new Map();
+    offline = true;
+    try {
+      const mod = async () => (await getUserProgression(USER)).dip;
+
+      // Tier 1 (slow-eccentric dips) with a +2 offset: hard eases back to 0.
+      await saveUserProgression(USER, { dip: { reps: 2, tension: 0, tier: 1 } });
+      await updateUserProgression(USER, [{ name: 'Slow-eccentric chair dips (3s down)', reps: 10, tension: 2 }], 'hard');
+      assert.equal((await mod()).reps, 0);
+      assert.equal((await mod()).tier, 1);
+
+      // At the floor of a harder variation, hard steps down to the previous one.
+      await updateUserProgression(USER, [{ name: 'Slow-eccentric chair dips (3s down)', reps: 8, tension: 2 }], 'hard');
+      assert.equal((await mod()).tier, 0);
+      assert.equal((await mod()).reps, 0);
+
+      // At the floor of the first variation there is nothing easier to offer.
+      await updateUserProgression(USER, [{ name: 'Chair dips', reps: 10, tension: 2 }], 'hard');
+      assert.equal((await mod()).tier, 0);
+      assert.equal((await mod()).reps, 0);
+
+      // "right" leaves everything exactly where it is.
+      await updateUserProgression(USER, [{ name: 'Chair dips', reps: 10, tension: 2 }], 'right');
+      assert.equal((await mod()).tier, 0);
+      assert.equal((await mod()).reps, 0);
+
+      // Non-ladder exercises keep the old plain-offset behavior, including the
+      // static-hold floor of 5 seconds.
       await updateUserProgression(USER, [{ name: 'Plank', reps: 1, tension: 10 }], 'hard');
       assert.equal((await getUserProgression(USER)).plank.tension, -5);
       await updateUserProgression(USER, [{ name: 'Plank', reps: 1, tension: 5 }], 'hard');
       assert.equal((await getUserProgression(USER)).plank.tension, -5, 'must not go below MIN_HOLD');
-
-      // "right" means leave it exactly where it is.
       await updateUserProgression(USER, [{ name: 'Plank', reps: 1, tension: 5 }], 'right');
       assert.equal((await getUserProgression(USER)).plank.tension, -5);
     } finally {

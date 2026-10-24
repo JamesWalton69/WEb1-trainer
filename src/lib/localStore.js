@@ -29,6 +29,12 @@ import {
   pendingCount,
 } from './api.js';
 import { normalizeExerciseKey, normalizeProgressionMap } from './exerciseKey.js';
+import {
+  FAMILY_LADDERS,
+  familyOf,
+  familyModifier,
+  clampTier,
+} from './progressionLadder.js';
 
 export const LOCAL_USER_ID = 'guest';
 
@@ -473,14 +479,39 @@ export async function saveUserProgression(userId, progressionData) {
 
 // ===== ADAPTIVE PROGRESSION LOGIC =====
 
-// How far one "too easy" or "too hard" moves the dial.
+// How far one "too easy" or "too hard" moves the dial for exercises that are
+// not on a ladder family (progressionLadder.js) — custom routines with
+// unlisted movements.
 const REP_STEP = 2;
 const HOLD_STEP = 5;
 const MIN_REPS = 1;
 const MIN_HOLD = 5;
 
+/**
+ * Fold feedback from a finished session into the progression store.
+ *
+ * For ladder-family exercises (the plan) the rules are:
+ *
+ *   "too easy"
+ *     - if there is room in the current variation's range, add `step` reps;
+ *     - if already at the ceiling, advance to the next harder variation and
+ *       reset the offset (that's the level-up);
+ *     - the top variation at its ceiling has nowhere to go — keep it.
+ *   "too hard"
+ *     - ease off `step` reps toward the variation's floor;
+ *     - at the floor, drop down to the previous, easier variation;
+ *     - the first variation at its floor is the easiest thing we offer — keep.
+ *   "just right" — nothing changes.
+ *
+ * Non-family exercises keep the old behavior: a plain ±REP_STEP offset with
+ * a hard floor at MIN_REPS / MIN_HOLD.
+ *
+ * Returns `{ advanced: [names] }` — the ladder variations that were just
+ * unlocked, so the UI can say so.
+ */
 export async function updateUserProgression(userId, routine, feedback) {
-  if (!routine || !feedback || feedback === 'right') return;
+  if (!routine || !feedback || feedback === 'right') return { advanced: [] };
+  const advanced = [];
   try {
     const modifiers = await getUserProgression(userId);
 
@@ -491,13 +522,49 @@ export async function updateUserProgression(userId, routine, feedback) {
       if (!key || seen.has(key)) continue;
       seen.add(key);
 
+      const family = familyOf(key);
+      const isStaticHold = ex.reps === 1 && ex.tension > 2;
+
+      if (family) {
+        const ladder = FAMILY_LADDERS[family];
+        const mod = familyModifier(modifiers, family) || { reps: 0, tension: 0, tier: 0 };
+        const tier = clampTier(family, mod.tier);
+        const variation = ladder.tiers[tier];
+        const offset = mod.reps || 0;
+        const cap = variation.max - variation.min;
+
+        if (feedback === 'easy') {
+          if (isStaticHold) {
+            modifiers[family] = { ...mod, tension: (mod.tension || 0) + HOLD_STEP };
+          } else if (offset < cap) {
+            modifiers[family] = { ...mod, reps: Math.min(offset + ladder.step, cap) };
+          } else if (tier < ladder.tiers.length - 1) {
+            modifiers[family] = { ...mod, reps: 0, tier: tier + 1 };
+            advanced.push(ladder.tiers[tier + 1].name);
+          }
+          // Top variation at its ceiling: no harder version exists — keep it.
+        } else if (feedback === 'hard') {
+          if (isStaticHold) {
+            if (ex.tension - HOLD_STEP >= MIN_HOLD) {
+              modifiers[family] = { ...mod, tension: (mod.tension || 0) - HOLD_STEP };
+            }
+          } else if (offset > 0) {
+            modifiers[family] = { ...mod, reps: Math.max(offset - ladder.step, 0) };
+          } else if (tier > 0) {
+            // At the floor of a harder variation: step back down to the
+            // previous one.
+            modifiers[family] = { ...mod, reps: 0, tier: tier - 1 };
+            advanced.push(ladder.tiers[tier - 1].name);
+          }
+          // First variation at its floor: nothing easier to offer — keep it.
+        }
+        continue;
+      }
+
+      // Non-family exercises: the old plain-offset behavior.
       const mod = modifiers[key] || { reps: 0, tension: 0 };
       const repOffset = mod.reps || 0;
       const holdOffset = mod.tension || 0;
-
-      // Static holds are reps === 1 with a real duration; everything else is
-      // counted in reps.
-      const isStaticHold = ex.reps === 1 && ex.tension > 2;
 
       if (feedback === 'easy') {
         modifiers[key] = isStaticHold
@@ -506,12 +573,9 @@ export async function updateUserProgression(userId, routine, feedback) {
         continue;
       }
 
-      // feedback === 'hard': ease off, but not below the floor.
-      //
-      // `ex` is the routine the engine just ran, which Dashboard already passed
-      // through applyProgression — so ex.reps/ex.tension INCLUDE the offset.
-      // Adding the offset again here (as this once did) tested base + 2×offset
-      // against the floor, letting the offset run past it.
+      // feedback === 'hard': ease off, but not below the floor. `ex` is the
+      // routine the engine just ran, which includes any offset applied by
+      // applyProgression.
       if (isStaticHold) {
         if (ex.tension - HOLD_STEP >= MIN_HOLD) {
           modifiers[key] = { ...mod, tension: holdOffset - HOLD_STEP };
@@ -522,8 +586,10 @@ export async function updateUserProgression(userId, routine, feedback) {
     }
 
     await saveUserProgression(userId, modifiers);
+    return { advanced };
   } catch (e) {
     console.error('Error updating user progression:', e);
+    return { advanced: [] };
   }
 }
 

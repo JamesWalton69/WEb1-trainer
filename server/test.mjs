@@ -106,10 +106,10 @@ async function run() {
       profile: { userName: 'RIDDHIMAN' },
     });
     assert.equal(status, 200);
-    assert.deepEqual(json.applied, { sessions: 2, routines: 1 });
+    assert.deepEqual(json.applied, { sessions: 2, routines: 1, freezes: 0 });
     assert.equal(json.sessions.length, 2);
     assert.equal(json.routines[0].name, 'My Core');
-    assert.deepEqual(json.progression.Pushups, { reps: 2, tension: 0 });
+    assert.deepEqual(json.progression.Pushups, { reps: 2, tension: 0, tier: 0 });
     assert.equal(json.profile.userName, 'RIDDHIMAN');
   });
 
@@ -143,8 +143,8 @@ async function run() {
     await api('PATCH', '/progression', { progression: { 'Jump Squats': { reps: -2, tension: 0 } } });
     const { json } = await api('GET', '/progression');
     assert.deepEqual(json.progression, {
-      Pushups: { reps: 2, tension: 0 },
-      'Jump Squats': { reps: -2, tension: 0 },
+      Pushups: { reps: 2, tension: 0, tier: 0 },
+      'Jump Squats': { reps: -2, tension: 0, tier: 0 },
     });
   });
 
@@ -180,7 +180,7 @@ async function run() {
     // An empty body still means "nothing to apply", which the client relies on.
     const empty = await fetch(`${BASE}/sync`, { method: 'POST' });
     assert.equal(empty.status, 200);
-    assert.deepEqual((await empty.json()).applied, { sessions: 0, routines: 0 });
+    assert.deepEqual((await empty.json()).applied, { sessions: 0, routines: 0, freezes: 0 });
     // POST /api/sessions does take a bare array.
     assert.equal((await api('POST', '/sessions', [session({ id: 's-arr' })])).status, 200);
     assert.equal((await api('DELETE', '/sessions/s-arr')).status, 200);

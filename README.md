@@ -27,8 +27,10 @@ See [SERVICES.md](./SERVICES.md) for exactly what is stored where.
 1. **Guided sessions.** The workout engine walks each set with prep, tension,
    reset and rest timers, a progress ring, and spoken cues through the browser's
    `SpeechSynthesis` API.
-2. **Progressive overload.** Per-exercise rep and hold offsets that carry
-   forward, applied to the routine each time you run it.
+2. **Progressive overload.** Per-exercise rep and hold offsets that carry — now driven by exercise ladders
+   forward, applied to the routine each time you run it — with the app's
+   Easy/Just Right/Hard feedback moving you up harder variations (push-ups →
+   decline → archer, pull-ups → slow negatives → weighted, and so on).
 3. **Custom routines.** Build your own, or run the built-in weekly calisthenics
    plan from `src/lib/workout-routine.json`.
 4. **History and charts.** Streak calendar, badges, and volume charts built from

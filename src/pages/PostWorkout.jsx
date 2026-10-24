@@ -21,6 +21,7 @@ export default function PostWorkout() {
 
   const userId = LOCAL_USER_ID;
   const [feedback, setFeedback] = useState(null);
+  const [progressionNote, setProgressionNote] = useState(null);
   const [quote] = useState(getRandomQuote());
   const completed = summary.status === 'Completed';
 
@@ -67,7 +68,10 @@ export default function PostWorkout() {
     });
     // Trigger progressive workout adjustments based on feedback
     if (summary.routine) {
-      await updateUserProgression(userId, summary.routine, value);
+      const result = await updateUserProgression(userId, summary.routine, value);
+      if (result?.advanced?.length) {
+        setProgressionNote(`Up next: ${result.advanced.join(' · ')}`);
+      }
     }
   };
 
@@ -197,6 +201,14 @@ export default function PostWorkout() {
               {feedback === 'easy' && "We'll push you harder next time!"}
               {feedback === 'right' && "Perfect! Keeping the same intensity."}
               {feedback === 'hard' && "We'll ease up slightly next session."}
+            </p>
+          )}
+          {progressionNote && (
+            <p className="animate-fade-in" role="status" style={{
+              marginTop: '6px', marginBottom: 0,
+              color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 700,
+            }}>
+              ⚡ {progressionNote}
             </p>
           )}
         </div>
