@@ -450,4 +450,63 @@ check('dates are local, so a UTC-evening workout stays on today', () => {
   assert.equal(stats.completedDates[0], today);
 });
 
+// --- 3D Biomechanical Kinematics Tests ---
+const { resolveKinematicFamily, EXERCISE_STEP_GUIDES, updateKinematics } =
+  await import(pathToFileURL(join(ROOT, 'src', 'components', 'exercise3d', 'kinematics.js')).href);
+
+check('kinematic family resolves curls and compound movements', () => {
+  assert.equal(resolveKinematicFamily('Backpack curls'), 'curl');
+  assert.equal(resolveKinematicFamily('Water-bottle curls'), 'curl');
+  assert.equal(resolveKinematicFamily('Backpack bicep curls'), 'curl');
+  assert.equal(resolveKinematicFamily('Weighted push-ups (backpack)'), 'push');
+  assert.equal(resolveKinematicFamily('Deep squats'), 'squat');
+  assert.equal(resolveKinematicFamily('Pike push-ups'), 'push');
+  assert.equal(resolveKinematicFamily('Random exercise'), 'default');
+});
+
+check('bicep curl step guide has all 4 biomechanical phases', () => {
+  const steps = EXERCISE_STEP_GUIDES.curl;
+  assert.equal(steps.length, 4);
+  assert.equal(steps[0].step, 1);
+  assert.ok(steps[0].cue.length > 0);
+  assert.ok(steps[2].targetElbowDeg >= 135);
+  assert.ok(steps[3].cue.toLowerCase().includes('negative') || steps[3].cue.toLowerCase().includes('lockout'));
+});
+
+check('kinematics calculation updates angles and activation during bicep curls', () => {
+  const fakeRig = {
+    bones: {
+      pelvis: { position: { y: 0 }, rotation: { x: 0 } },
+      chest: { position: { y: 0 } },
+      leftElbow: { rotation: { x: 0 } },
+      rightElbow: { rotation: { x: 0 } },
+      leftUpperArm: { rotation: { x: 0 } },
+      rightUpperArm: { rotation: { x: 0 } },
+    },
+    meshes: {
+      leftBicep: { scale: { set: () => {} } },
+      rightBicep: { scale: { set: () => {} } },
+    },
+    materials: {
+      bicepMat: { emissiveIntensity: 0, emissive: { setHex: () => {} } },
+    },
+  };
+
+  // Simulate multiple animation frames to let 60fps smoothing converge
+  let concentric;
+  for (let f = 0; f < 30; f++) {
+    concentric = updateKinematics(fakeRig, 'Backpack curls', { phase: 'UP', progress: 0.95 }, f * 0.016);
+  }
+
+  assert.ok(concentric.elbowAngleDeg > 90, `Elbow flexion ${concentric.elbowAngleDeg} deg should exceed 90 deg at top of curl`);
+  assert.ok(concentric.muscleActivation > 50, 'Bicep muscle activation is high during curl peak');
+  assert.ok(concentric.primaryMuscle.includes('Biceps'));
+
+  let eccentric;
+  for (let f = 0; f < 30; f++) {
+    eccentric = updateKinematics(fakeRig, 'Backpack curls', { phase: 'REP 1 — DOWN', progress: 0.8 }, 2.0 + f * 0.016);
+  }
+  assert.ok(eccentric.activeStep.includes('Negative'));
+});
+
 console.log(`\n${passed} checks passed.`);

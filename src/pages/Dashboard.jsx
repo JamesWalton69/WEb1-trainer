@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Play, PlusCircle, Activity, Calendar, Flame,
   TrendingUp, Zap, Award, Edit2, Trash2, Dumbbell, X,
-  Trophy, Shield, Clock, CheckCircle2, Star
+  Trophy, Shield, Clock, CheckCircle2, Star, Sparkles
 } from 'lucide-react';
 
 const BADGE_ICONS = {
@@ -28,6 +28,7 @@ import {
   getUserProgression, getDisplayName, setDisplayName, LOCAL_USER_ID
 } from '../lib/localStore';
 import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay, applyProgression, getProgressionDisplayList } from '../lib/weeklyPlan';
+import FormPreviewModal from '../components/exercise3d/FormPreviewModal';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -47,6 +48,8 @@ export default function Dashboard() {
   const [progressionModifiers, setProgressionModifiers] = useState({});
   const [loading, setLoading] = useState(true);
   const [showPlanModal, setShowPlanModal] = useState(false);
+  const [show3DStudio, setShow3DStudio] = useState(false);
+  const [selected3DEx, setSelected3DEx] = useState('Backpack curls');
   const weekdayIds = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const todayPlan = resolveWeeklyPlanDay(weekdayIds[new Date().getDay()]);
 
@@ -125,7 +128,7 @@ export default function Dashboard() {
             <div className="avatar" style={{
               background: 'var(--grad-primary)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.25rem', fontWeight: 800, color: 'white',
+              fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)',
             }}>
               {firstName[0]?.toUpperCase()}
             </div>
@@ -156,7 +159,7 @@ export default function Dashboard() {
         <div className="animate-fade-up delay-1">
           <div className="quote-card" style={{ marginBottom: '1.5rem' }}>
             "{dailyQuote.text}"
-            <span className="quote-author">— {dailyQuote.author}</span>
+            <span className="quote-author">({dailyQuote.author})</span>
           </div>
         </div>
 
@@ -262,7 +265,7 @@ export default function Dashboard() {
                       </p>
                       {!todayPlan.isRestDay && progressionModifiers && Object.keys(progressionModifiers).length > 0 && (
                         <span className="pill pill-live" style={{ marginBottom: '0.35rem' }}>
-                          ⚡ Overload applied
+                          <Zap size={13} style={{ display: 'inline', marginRight: '4px' }} /> Overload active
                         </span>
                       )}
                       <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: '0.4rem', marginBottom: 0 }}>
@@ -282,6 +285,24 @@ export default function Dashboard() {
                       <Play size={18} /> {todayPlan.isRestDay ? 'Rest Day' : 'Start'}
                     </button>
                   </div>
+                  <button
+                    className="btn btn-ghost"
+                    style={{
+                      width: '100%',
+                      justifyContent: 'center',
+                      borderColor: 'rgba(15, 185, 166, 0.35)',
+                      color: 'var(--accent-light)',
+                      fontSize: '0.8rem',
+                      gap: '6px',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onClick={() => {
+                      setSelected3DEx('Backpack curls');
+                      setShow3DStudio(true);
+                    }}
+                  >
+                    <Sparkles size={15} /> 3D Form Studio
+                  </button>
               </div>
 
               {/* Custom Routines */}
@@ -362,7 +383,7 @@ export default function Dashboard() {
                 </h3>
                 <div className="streak-grid">
                 {streakCells.map((cell, i) => (
-                    <div key={i} className={`streak-cell ${cell.completed ? 'level-4' : 'empty'}`} title={`${cell.date}${cell.completed ? ' ✅' : ''}`} />
+                    <div key={i} className={`streak-cell ${cell.completed ? 'level-4' : 'empty'}`} title={`${cell.date}${cell.completed ? ' (Completed)' : ''}`} />
                 ))}
                 </div>
             </div>
@@ -449,7 +470,7 @@ export default function Dashboard() {
                             gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap',
                           }}>
                             <div style={{ minWidth: 0 }}>
-                              <h3 style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{day.label} — {day.focus}</h3>
+                              <h3 style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{day.label}: {day.focus}</h3>
                               {day.repeatLabel && (
                                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 0 }}>{day.repeatLabel}</p>
                               )}
@@ -493,7 +514,9 @@ export default function Dashboard() {
                   </div>
 
                   <div style={{ marginTop: '1.25rem' }}>
-                    <h3 style={{ fontSize: '1rem', marginBottom: '0.6rem' }}>📈 Progression Rules</h3>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <TrendingUp size={16} /> Progression Rules
+                    </h3>
                     <div style={{ display: 'grid', gap: '0.6rem' }}>
                       {weeklyCalisthenicsPlan.progressionRules.map((rule) => (
                         <div key={rule.exercise} className="glass-solid" style={{ padding: '0.9rem' }}>
@@ -509,6 +532,13 @@ export default function Dashboard() {
               </div>
           </div>
       )}
+
+      {/* 3D Biomechanical Form Studio Modal */}
+      <FormPreviewModal
+        isOpen={show3DStudio}
+        onClose={() => setShow3DStudio(false)}
+        initialExercise={selected3DEx}
+      />
 
     </div>
   );

@@ -119,18 +119,18 @@ Nothing is reachable from outside yet — that is the point of the loopback bind
 
 ## 5. Set the password
 
-This is the only credential in the system. It protects the app and the API
-together, so choose something long.
+This is the edge credential protecting the app and the API. Use `-B -C 12` to force
+bcrypt hashing with a cost factor of 12 (4,096 rounds), preventing offline cracking
+attacks:
 
 ```bash
-sudo htpasswd -c /etc/nginx/.htpasswd yourname
+sudo htpasswd -B -C 12 -c /etc/nginx/.htpasswd yourname
 sudo chown root:www-data /etc/nginx/.htpasswd
 sudo chmod 640 /etc/nginx/.htpasswd
 ```
 
-Use `sudo htpasswd /etc/nginx/.htpasswd othername` (no `-c`) to add a second
-person later; `-c` overwrites the file. Everyone shares one workout history
-regardless — the app has no notion of users.
+Use `sudo htpasswd -B -C 12 /etc/nginx/.htpasswd othername` (no `-c`) to add a second
+person later; `-c` overwrites the file.
 
 ## 6. Get the certificate first, then install the site config
 

@@ -37,6 +37,21 @@ import {
   getProfile,
   HttpError,
 } from './db.mjs';
+import {
+  registerUser,
+  loginUser,
+  invalidateSession,
+  requestPasswordReset,
+  confirmPasswordReset,
+  getSession,
+  verifyCsrfProtection,
+} from './auth.mjs';
+import {
+  startMfaEnrollment,
+  confirmMfaEnrollment,
+  verifyMfaForSession,
+  disableMfa,
+} from './mfa.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -194,6 +209,29 @@ function tokenOk(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
+  return req.socket.remoteAddress || '127.0.0.1';
+}
+
+function getSessionFromReq(req) {
+  const authHeader = req.headers['authorization'];
+  let sid = '';
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    sid = authHeader.slice(7).trim();
+  } else if (req.headers['x-session-id']) {
+    sid = String(req.headers['x-session-id']).trim();
+  }
+  return sid ? getSession(db, sid) : null;
+}
+
+function requireAuthenticatedSession(req) {
+  const session = getSessionFromReq(req);
+  if (!session) throw new HttpError(401, 'Authentication required');
+  return session;
+}
+
 // ===== routes =====
 //
 // Every write is a row-level upsert (see db.mjs), so two devices syncing at
@@ -207,6 +245,103 @@ async function route(req, res, url) {
 
   if (seg[0] !== 'api') throw new HttpError(404, 'Not found');
   const [, resource, id] = seg;
+
+  // ===== AUTH ROUTES =====
+  if (resource === 'auth') {
+    const action = seg[2];
+    const subAction = seg[3];
+    const ip = getClientIp(req);
+
+    if (action === 'register' && method === 'POST') {
+      const body = await readBody(req, res);
+      const user = registerUser(db, body);
+      return send(res, 201, user);
+    }
+
+    if (action === 'login' && method === 'POST') {
+      const body = await readBody(req, res);
+      const result = loginUser(db, { ...body, ip });
+      return send(res, 200, result);
+    }
+
+    if (action === 'logout' && method === 'POST') {
+      const session = getSessionFromReq(req);
+      if (session) {
+        verifyCsrfProtection(req, session);
+        invalidateSession(db, session.id);
+      }
+      return send(res, 200, { ok: true, message: 'Logged out successfully' });
+    }
+
+    if (action === 'password-reset') {
+      if (subAction === 'request' && method === 'POST') {
+        const body = await readBody(req, res);
+        const result = requestPasswordReset(db, { ...body, ip });
+        return send(res, 200, result);
+      }
+      if (subAction === 'confirm' && method === 'POST') {
+        const body = await readBody(req, res);
+        const result = confirmPasswordReset(db, { ...body, ip });
+        return send(res, 200, result);
+      }
+    }
+
+    if (action === 'mfa') {
+      if (subAction === 'enroll' && method === 'POST') {
+        const session = requireAuthenticatedSession(req);
+        verifyCsrfProtection(req, session);
+        const body = await readBody(req, res);
+        const result = startMfaEnrollment(db, session.user_id, body.currentPassword);
+        return send(res, 200, result);
+      }
+      if (subAction === 'confirm' && method === 'POST') {
+        const session = requireAuthenticatedSession(req);
+        verifyCsrfProtection(req, session);
+        const body = await readBody(req, res);
+        const result = confirmMfaEnrollment(db, session.user_id, body.code);
+        return send(res, 200, result);
+      }
+      if (subAction === 'verify' && method === 'POST') {
+        const body = await readBody(req, res);
+        const session = getSessionFromReq(req);
+        const sid = session ? session.id : body.sessionId;
+        const result = verifyMfaForSession(db, sid, body);
+        return send(res, 200, result);
+      }
+      if (subAction === 'disable' && method === 'POST') {
+        const session = requireAuthenticatedSession(req);
+        verifyCsrfProtection(req, session);
+        const body = await readBody(req, res);
+        const result = disableMfa(db, session.user_id, body);
+        return send(res, 200, result);
+      }
+    }
+
+    if (action === 'me' && method === 'GET') {
+      const session = requireAuthenticatedSession(req);
+      const user = db.prepare('SELECT id, email, role, created_at FROM users WHERE id = ?').get(session.user_id);
+      return send(res, 200, {
+        user,
+        session: {
+          id: session.id,
+          mfaVerified: Boolean(session.mfa_verified),
+          expiresAt: session.expires_at,
+        },
+      });
+    }
+
+    throw new HttpError(404, `No auth route for ${method} ${pathname}`);
+  }
+
+  // If a request provides a session token, enforce CSRF and MFA verification
+  const reqSession = getSessionFromReq(req);
+  if (reqSession) {
+    verifyCsrfProtection(req, reqSession);
+    const mfa = db.prepare('SELECT enabled FROM user_mfa WHERE user_id = ?').get(reqSession.user_id);
+    if (mfa && mfa.enabled === 1 && reqSession.mfa_verified !== 1) {
+      throw new HttpError(403, 'Multi-factor authentication verification required');
+    }
+  }
 
   // GET /api/health — for systemd, nginx and a quick curl after deploying.
   if (method === 'GET' && resource === 'health') {

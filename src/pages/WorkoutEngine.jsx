@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Pause, Play, Square, Volume2, VolumeX, Mic, MicOff, Music, X,
-  Sun, SunDim, SkipForward,
+  Sun, SunDim, SkipForward, Sparkles,
 } from 'lucide-react';
 import { getRandomQuote } from '../lib/quotes';
 import { weeklyCalisthenicsPlan, resolveWeeklyPlanDay } from '../lib/weeklyPlan';
 import { PHASE_COLORS, getPhaseColor, phaseVars, isPhaseActive } from '../lib/phaseColor';
 import { useWakeLock } from '../lib/useWakeLock';
+import ExerciseCanvas3D from '../components/exercise3d/ExerciseCanvas3D';
+import FormPreviewModal from '../components/exercise3d/FormPreviewModal';
 
 const defaultPlanDay = resolveWeeklyPlanDay('monday');
 const defaultWorkout = defaultPlanDay.executableRoutine;
@@ -30,9 +32,11 @@ export default function WorkoutEngine() {
   const [phase, setPhase] = useState("GET READY");
   const [subInfo, setSubInfo] = useState("");
   const [currentEx, setCurrentEx] = useState(null);
+  const [exIndex, setExIndex] = useState(-1);
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);
   const [restQuote, setRestQuote] = useState(null);
+  const [show3DModal, setShow3DModal] = useState(false);
 
   // Voice & music state
   const [voiceActive, setVoiceActive] = useState(false);
@@ -242,6 +246,7 @@ export default function WorkoutEngine() {
       for (let i = 0; i < activeWorkout.length; i++) {
         const ex = activeWorkout[i];
         setCurrentEx(ex);
+        setExIndex(i);
         currentExRef.current = ex.name;
         setRestQuote(null);
 
@@ -487,6 +492,17 @@ export default function WorkoutEngine() {
           </button>
           <button
             className="btn btn-icon"
+            onClick={() => {
+              setPaused(true);
+              setShow3DModal(true);
+            }}
+            title="3D Biomechanical Form Studio"
+            aria-label="Open 3D Form Studio"
+          >
+            <Sparkles size={18} color="var(--accent-light)" />
+          </button>
+          <button
+            className="btn btn-icon"
             onClick={() => setMuted(!muted)}
             aria-pressed={muted}
             aria-label={muted ? 'Unmute cues' : 'Mute cues'}
@@ -508,13 +524,19 @@ export default function WorkoutEngine() {
           </h2>
         )}
 
-        {currentEx && currentEx.gif && !['REST', 'TRANSITION', 'COMPLETE', 'WARM-UP'].includes(phase) && (
-          <div className="animate-scale-in" style={{ marginBottom: '20px' }}>
-            <img
-              src={currentEx.gif}
-              alt={currentEx.name}
-              className="exercise-img"
-              style={{ height: 'clamp(96px, 22vh, 160px)', borderRadius: 'var(--radius-md)', objectFit: 'cover' }}
+        {currentEx && showChrome && (
+          <div style={{ width: '100%', marginBottom: '16px' }}>
+            <ExerciseCanvas3D
+              exerciseName={currentEx.name}
+              phase={phase}
+              countdown={countdown}
+              countdownMax={countdownMax}
+              paused={paused}
+              onExpand={() => {
+                setPaused(true);
+                setShow3DModal(true);
+              }}
+              height="clamp(190px, 30vh, 255px)"
             />
           </div>
         )}
@@ -550,7 +572,7 @@ export default function WorkoutEngine() {
             <p style={{ fontStyle: 'italic', color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', marginBottom: '4px' }}>
               "{restQuote.text}"
             </p>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>— {restQuote.author}</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>({restQuote.author})</p>
           </div>
         )}
 
@@ -572,7 +594,7 @@ export default function WorkoutEngine() {
             <button
               onClick={() => { skipWarmupRef.current = true; }}
               className="btn btn-ghost"
-              style={{ background: 'rgba(255,255,255,0.14)', borderColor: 'rgba(255,255,255,0.3)', color: '#fff' }}
+              style={{ background: 'var(--surface-2)', borderColor: 'var(--surface-3)', color: 'var(--text-primary)' }}
             >
               <SkipForward size={18} /> Skip
             </button>
@@ -658,6 +680,24 @@ export default function WorkoutEngine() {
           SPACE = pause · ESC = stop
         </div>
       </div>
+
+      {/* Remaining exercises, pinned to the side. Shows everything before the
+          first exercise starts (exIndex -1), then only what's left. */}
+      {activeWorkout.length > 0 && (
+        <div className="workout-remaining">
+          <span className="workout-remaining-title">Remaining</span>
+          {activeWorkout.slice(exIndex + 1).map((ex, j) => (
+            <span key={j} className="workout-remaining-item">{ex.name}</span>
+          ))}
+        </div>
+      )}
+
+      {/* 3D Biomechanical Form Studio Modal */}
+      <FormPreviewModal
+        isOpen={show3DModal}
+        onClose={() => setShow3DModal(false)}
+        initialExercise={currentEx?.name || 'Backpack curls'}
+      />
     </div>
   );
 }

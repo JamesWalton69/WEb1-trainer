@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckCircle, XCircle, ArrowRight, ThumbsDown, Minus, ThumbsUp, Clock, Pause as PauseIcon, Dumbbell, Trophy, Activity } from 'lucide-react';
+import { CheckCircle, XCircle, ArrowRight, ThumbsDown, Minus, ThumbsUp, Clock, Pause as PauseIcon, Dumbbell, Trophy, Activity, Zap } from 'lucide-react';
 import { getRandomQuote } from '../lib/quotes';
 import { logWorkoutSession, updateUserProgression, LOCAL_USER_ID } from '../lib/localStore';
 
@@ -88,7 +88,7 @@ export default function PostWorkout() {
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
               This page summarises a workout you have just finished. Reloading it loses
-              that summary — your history is safe on the dashboard.
+              that summary (your history is safe on the dashboard).
             </p>
             <button className="btn btn-primary btn-lg" style={{ width: '100%' }} onClick={() => navigate('/dashboard')}>
               Back to Dashboard <ArrowRight size={20} />
@@ -170,7 +170,7 @@ export default function PostWorkout() {
         <div className="glass animate-fade-up delay-2" style={{ marginBottom: '20px', textAlign: 'center' }}>
           <h3 style={{ marginBottom: '6px', fontSize: '1rem' }}>How was that workout?</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '16px' }}>
-            Your feedback adjusts next session's intensity
+            Your feedback adjusts next session’s intensity
           </p>
           {/* radiogroup, not three loose buttons: it is one choice, and a screen
               reader should say which of the three is taken. */}
@@ -207,8 +207,9 @@ export default function PostWorkout() {
             <p className="animate-fade-in" role="status" style={{
               marginTop: '6px', marginBottom: 0,
               color: 'var(--warning)', fontSize: '0.85rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
             }}>
-              ⚡ {progressionNote}
+              <Zap size={14} /> {progressionNote}
             </p>
           )}
         </div>
@@ -217,7 +218,7 @@ export default function PostWorkout() {
         <div className="animate-fade-up delay-3" style={{ marginBottom: '20px' }}>
           <div className="quote-card">
             "{quote.text}"
-            <span className="quote-author">— {quote.author}</span>
+            <span className="quote-author">({quote.author})</span>
           </div>
         </div>
 

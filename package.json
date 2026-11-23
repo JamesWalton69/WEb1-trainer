@@ -13,7 +13,8 @@
     "test:server": "node server/test.mjs",
     "test:sync": "node scripts/test-sync.mjs",
     "test:lib": "node scripts/test-lib.mjs",
-    "test": "node server/test.mjs && node scripts/test-sync.mjs && node scripts/test-lib.mjs",
+    "test:auth": "node server/test-auth.mjs",
+    "test": "node server/test.mjs && node scripts/test-sync.mjs && node scripts/test-lib.mjs && node server/test-auth.mjs",
     "backup": "node server/backup.mjs"
   },
   "engines": {
@@ -27,7 +28,8 @@
     "react-is": "^19.2.5",
     "react-router-dom": "^7.14.1",
     "recharts": "^3.8.1",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

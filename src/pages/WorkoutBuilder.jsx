@@ -118,13 +118,13 @@ export default function WorkoutBuilder() {
 
       setExercises(generated);
       setShowSmartGen(false);
-      setSaveMsg('✨ Routine Auto-Generated!');
+      setSaveMsg('Routine auto-generated');
       setTimeout(() => setSaveMsg(''), 3000);
   };
 
   const handleSave = async () => {
     if (!routineName.trim()) {
-      setSaveMsg('Please enter a routine name! ❌');
+      setSaveMsg('Please enter a routine name');
       setTimeout(() => setSaveMsg(''), 3000);
       return;
     }
@@ -132,7 +132,7 @@ export default function WorkoutBuilder() {
     // Passing settings as the 5th argument
     const newId = await saveCustomWorkout(userId, routineId, routineName, exercises, settings);
     if (newId) setRoutineId(newId);
-    setSaveMsg('Saved successfully! ✅');
+    setSaveMsg('Saved successfully');
     setSaving(false);
     setTimeout(() => {
         setSaveMsg('');
@@ -201,7 +201,7 @@ export default function WorkoutBuilder() {
                   <Wand2 size={16} /> Smart Generation Engine
                 </h4>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                    Describe your perfect workout, and I'll build the exercise list and configure the optimal rest times.
+                    Describe your perfect workout, and I’ll build the exercise list and configure the optimal rest times.
                 </p>
                 {/* Wraps to two rows on a narrow phone rather than crushing the
                     field to nothing beside the button. */}
@@ -361,7 +361,7 @@ export default function WorkoutBuilder() {
               textAlign: 'center', color: 'var(--text-muted)',
               fontSize: '0.88rem', padding: '1.5rem 0', marginBottom: 0,
             }}>
-              No exercises yet — add one, load the default set, or use Smart Gen.
+              No exercises yet: add one, load the default set, or use Smart Gen.
             </p>
           )}
         </div>
@@ -393,7 +393,7 @@ export default function WorkoutBuilder() {
           /* role=status so the outcome is announced, not just coloured. */
           <p className="animate-fade-in" role="status" style={{
             textAlign: 'center', marginTop: '0.75rem', marginBottom: 0,
-            color: saveMsg.includes('❌') ? 'var(--danger)' : 'var(--accent-light)',
+            color: saveMsg.toLowerCase().includes('please') ? 'var(--danger)' : 'var(--accent-light)',
           }}>
             {saveMsg}
           </p>

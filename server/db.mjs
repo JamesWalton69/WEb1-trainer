@@ -19,7 +19,7 @@ import { dirname } from 'node:path';
 // `CREATE TABLE IF NOT EXISTS` block below only ever runs on an empty database —
 // on an existing one it is a silent no-op, so a new column added there alone
 // would never appear and every query touching it would fail at runtime.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // One row per frozen date rather than a JSON array under a profile key, for the
 // same reason progression is one row per exercise: two devices freezing
@@ -33,6 +33,59 @@ const FREEZE_DDL = `
   CREATE TABLE IF NOT EXISTS freezes (
     date       TEXT PRIMARY KEY,
     updated_at TEXT NOT NULL
+  );
+`;
+
+const AUTH_DDL = `
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'user',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions_auth (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL,
+    csrf_token    TEXT NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    mfa_verified  INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_auth_user ON sessions_auth (user_id);
+
+  CREATE TABLE IF NOT EXISTS password_resets (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL,
+    token_hash    TEXT UNIQUE NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    used          INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_resets_token_hash ON password_resets (token_hash);
+
+  CREATE TABLE IF NOT EXISTS user_mfa (
+    user_id           TEXT PRIMARY KEY,
+    totp_secret_enc   TEXT NOT NULL,
+    iv                TEXT NOT NULL,
+    auth_tag          TEXT NOT NULL,
+    enabled           INTEGER NOT NULL DEFAULT 0,
+    downgrade_locked  INTEGER NOT NULL DEFAULT 1,
+    created_at        TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS user_backup_codes (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    code_hash  TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    used_at    TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 `;
 
@@ -79,6 +132,8 @@ const SCHEMA = `
   );
 
   ${FREEZE_DDL}
+
+  ${AUTH_DDL}
 `;
 
 /**
@@ -104,6 +159,11 @@ const MIGRATIONS = [
     addColumnIfMissing(db, 'routines', 'kind', "TEXT NOT NULL DEFAULT 'routine'");
     addColumnIfMissing(db, 'progression', 'tier', 'INTEGER NOT NULL DEFAULT 0');
     db.exec(FREEZE_DDL);
+  },
+
+  // v2 → v3: user auth, sessions_auth, password_resets, user_mfa, user_backup_codes
+  (db) => {
+    db.exec(AUTH_DDL);
   },
 ];
 
